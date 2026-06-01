@@ -1,0 +1,45 @@
+-- tool_error: a tool_result flagged is_error.
+WITH events AS (
+  SELECT
+    md5(tr.session_id || ':' || CAST(tr.turn AS VARCHAR) || ':tool_error') AS incident_id,
+    tr.session_id,
+    sm.cwd AS project,
+    tr.ts,
+    'tool_error' AS signal_type,
+    COALESCE(am.implicated_artifact, '{{.GlobalClaudeMd}}') AS implicated_artifact,
+    COALESCE(am.candidates, json_array('{{.GlobalClaudeMd}}')) AS candidates,
+    'medium' AS confidence,
+    json_object('tool', tu.tool, 'tuid', tr.tuid) AS detail,
+    tr.turn
+  FROM tool_results tr
+  JOIN tool_uses    tu ON tu.session_id = tr.session_id AND tu.tuid = tr.tuid
+  JOIN session_meta sm ON sm.session_id = tr.session_id
+  LEFT JOIN artifact_main am ON am.session_id = tr.session_id
+  WHERE tr.is_error
+)
+{{template "windowed_insert" .}}
+
+-- retry: identical tool+input reappears within RetryWindowTurns turns.
+WITH events AS (
+  SELECT DISTINCT
+    md5(b.session_id || ':' || CAST(b.turn AS VARCHAR) || ':retry') AS incident_id,
+    b.session_id,
+    sm.cwd AS project,
+    b.ts,
+    'retry' AS signal_type,
+    am.implicated_artifact,
+    am.candidates,
+    'low' AS confidence,
+    json_object('tool', b.tool, 'input', b.input_str) AS detail,
+    b.turn
+  FROM tool_uses a
+  JOIN tool_uses b
+    ON b.session_id = a.session_id
+   AND b.tool = a.tool
+   AND b.input_str = a.input_str
+   AND b.turn > a.turn
+   AND b.turn - a.turn <= {{.RetryWindowTurns}}
+  JOIN session_meta  sm ON sm.session_id = b.session_id
+  JOIN artifact_main am ON am.session_id = b.session_id
+)
+{{template "windowed_insert" .}}
