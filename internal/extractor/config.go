@@ -67,9 +67,11 @@ func DefaultConfig() Config {
 		OutDB:              "incidents.db",
 		Since:              "",
 		Signals:            nil,
-		MemoryLimit:        "30GB",
-		Threads:            4,
-		MaxLineSize:        134217728, // 128 MiB; transcript lines can be huge
+		MemoryLimit:        "8GB",
+		Threads:            0,
+		MaxLineSize:        8388608, // 8 MiB; the longest real transcript line is ~0.5 MiB,
+		// and DuckDB sizes its CSV read buffer (~max_line_size x threads) eagerly,
+		// so an oversized value OOMs on the full corpus regardless of memory_limit.
 		WindowBefore:       3,
 		WindowAfter:        4,
 		ExcerptChars:       300,

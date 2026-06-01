@@ -18,6 +18,8 @@ func main() {
 	flag.StringVar(&cfg.OutDB, "out", cfg.OutDB, "output DuckDB file")
 	flag.StringVar(&cfg.Since, "since", cfg.Since, "ISO8601 lower bound on record timestamp")
 	flag.StringVar(&signals, "signals", "", "comma-separated signals (default: all)")
+	flag.StringVar(&cfg.MemoryLimit, "memory-limit", cfg.MemoryLimit, "DuckDB memory_limit pragma (e.g. 4GB)")
+	flag.IntVar(&cfg.Threads, "threads", cfg.Threads, "DuckDB threads pragma (0 = duckdb default / all cores)")
 	flag.Parse()
 
 	for _, s := range strings.Split(signals, ",") {

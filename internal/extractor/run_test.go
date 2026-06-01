@@ -31,6 +31,11 @@ func testConfig(t *testing.T, fixtureDir string, signals ...string) Config {
 	cfg.Signals = signals
 	cfg.GlobalClaudeMd = "/home/noams/.claude/CLAUDE.md"
 	cfg.AgentsDir = "/agents"
+	// Fixtures are tiny; the production memory_limit is sized for the 480MB real
+	// corpus. Under parallel `go test` an explicit cap makes DuckDB eagerly
+	// reserve against the shared cgroup and OOM, so let fixtures use the lazy
+	// default. TestInvalidMemoryLimitRejected sets MemoryLimit back explicitly.
+	cfg.MemoryLimit = ""
 	return cfg
 }
 
@@ -90,6 +95,14 @@ func TestIncidentIDIsIdempotent(t *testing.T) {
 	rows := query(t, db, "SELECT count(*) AS n FROM incidents;")
 	if n := jsonCount(t, rows[0]["n"]); n != 1 {
 		t.Fatalf("expected 1 incident after duplicate insert, got %d", n)
+	}
+}
+
+func TestInvalidMemoryLimitRejected(t *testing.T) {
+	cfg := testConfig(t, "base", "inefficiency")
+	cfg.MemoryLimit = "4GB'; DROP TABLE incidents; --"
+	if err := Run(context.Background(), cfg); err == nil {
+		t.Fatal("expected invalid memory_limit to be rejected, got nil error")
 	}
 }
 

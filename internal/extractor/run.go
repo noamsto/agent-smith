@@ -9,12 +9,17 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"text/template"
 )
 
 //go:embed sql/*.sql.tmpl
 var sqlFS embed.FS
+
+// memLimitRe guards the memory_limit pragma against SQL injection (it is
+// interpolated into a SET statement, including from the --memory-limit flag).
+var memLimitRe = regexp.MustCompile(`(?i)^[0-9]+\s?(b|kb|mb|gb|tb)$`)
 
 // duckDBBin is the duckdb executable; overridable for tests/packaging.
 func duckDBBin() string {
@@ -62,6 +67,9 @@ func renderScript(cfg Config) (string, error) {
 	var buf bytes.Buffer
 	// Prepend DuckDB runtime pragmas when configured.
 	if cfg.MemoryLimit != "" {
+		if !memLimitRe.MatchString(cfg.MemoryLimit) {
+			return "", fmt.Errorf("invalid memory_limit %q (want e.g. 4GB)", cfg.MemoryLimit)
+		}
 		fmt.Fprintf(&buf, "SET memory_limit='%s';\n", cfg.MemoryLimit)
 	}
 	if cfg.Threads > 0 {
