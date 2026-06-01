@@ -4,7 +4,7 @@
 
 ## Where things stand (2026-06-01)
 
-- **Repo:** `github.com/noamsto/agent-smith` (public). Local: `~/Data/git/agent-smith`.
+- **Repo:** `github.com/noamsto/agent-smith` (public). Local: `~/Data/git/noamsto/agent-smith`.
 - **Design:** complete & approved via a brainstorm. Lives in
   [`docs/specs/2026-06-01-agent-smith-design.md`](specs/2026-06-01-agent-smith-design.md). **Read it first.**
 - **README:** written (Matrix-themed, Mermaid pipeline diagram, badges).
