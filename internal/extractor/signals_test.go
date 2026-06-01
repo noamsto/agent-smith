@@ -2,6 +2,7 @@ package extractor
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -27,6 +28,22 @@ func TestUserCorrection(t *testing.T) {
 	// "thanks, that looks great" (session c2) must NOT flag.
 	if c["user_correction"] != 2 {
 		t.Fatalf("expected 2 user_correction incidents, got %d", c["user_correction"])
+	}
+}
+
+func TestOrchestratorDisagreement(t *testing.T) {
+	cfg := testConfig(t, "orchestrator", "orchestrator_disagreement")
+	cfg.AgentsDir = "/agents"
+	if err := Run(context.Background(), cfg); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	rows := query(t, cfg.OutDB,
+		"SELECT implicated_artifact FROM incidents WHERE signal_type='orchestrator_disagreement';")
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 disagreement incident (o1 only), got %d: %v", len(rows), rows)
+	}
+	if got := rows[0]["implicated_artifact"].(string); !strings.Contains(got, "/agents/go-reviewer.md") {
+		t.Errorf("expected implicated go-reviewer.md, got %v", got)
 	}
 }
 
