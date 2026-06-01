@@ -21,6 +21,9 @@ WITH events AS (
   JOIN session_meta sm ON sm.session_id = task.session_id
   WHERE task.tool = 'Task'
     AND task.subagent_type IS NOT NULL
+    AND NOT sm.is_subagent  -- only main-session orchestrators overrule a subagent
+    -- NB: matches the disagreement regex against the stringified-JSON excerpt, not just
+    -- text content — a deliberate over-collecting heuristic (hence confidence='low').
     AND regexp_matches(lower(d.excerpt), '{{.DisagreeRegex}}')
 )
 {{template "windowed_insert" .}}
