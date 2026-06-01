@@ -1,0 +1,27 @@
+-- user_correction: negation/interruption text shortly after an assistant tool_use.
+WITH events AS (
+  SELECT
+    md5(ut.session_id || ':' || CAST(ut.turn AS VARCHAR) || ':user_correction') AS incident_id,
+    ut.session_id,
+    sm.cwd AS project,
+    ut.ts,
+    'user_correction' AS signal_type,
+    am.implicated_artifact,
+    am.candidates,
+    'medium' AS confidence,
+    json_object('text', substr(ut.text, 1, 200)) AS detail,
+    ut.turn
+  FROM user_text ut
+  JOIN session_meta  sm ON sm.session_id = ut.session_id
+  JOIN artifact_main am ON am.session_id = ut.session_id
+  WHERE ut.text IS NOT NULL
+    AND ( regexp_matches(lower(ut.text), '{{.CorrectionRegex}}')
+          OR lower(ut.text) LIKE '%request interrupted%' )
+    AND EXISTS (
+      SELECT 1 FROM tool_uses tx
+      WHERE tx.session_id = ut.session_id
+        AND tx.turn < ut.turn
+        AND ut.turn - tx.turn <= {{.CorrectionLookback}}
+    )
+)
+{{template "windowed_insert" .}}

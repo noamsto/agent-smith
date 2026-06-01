@@ -17,6 +17,19 @@ func countBySignal(t *testing.T, db string) map[string]int {
 	return m
 }
 
+func TestUserCorrection(t *testing.T) {
+	cfg := testConfig(t, "user_correction", "user_correction")
+	if err := Run(context.Background(), cfg); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	c := countBySignal(t, cfg.OutDB)
+	// "no, that's wrong" (turn 2) + interruption marker (turn 4) = 2.
+	// "thanks, that looks great" (session c2) must NOT flag.
+	if c["user_correction"] != 2 {
+		t.Fatalf("expected 2 user_correction incidents, got %d", c["user_correction"])
+	}
+}
+
 func TestToolErrorAndRetry(t *testing.T) {
 	cfg := testConfig(t, "tool_error", "tool_error")
 	if err := Run(context.Background(), cfg); err != nil {
