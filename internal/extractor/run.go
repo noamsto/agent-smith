@@ -5,13 +5,17 @@ package extractor
 import (
 	"bytes"
 	"context"
+	"embed"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
+	"text/template"
 )
 
-// duckDBBin is the duckdb executable; overridable for tests/packaging.
+//go:embed sql/*.sql.tmpl
+var sqlFS embed.FS
+
 func duckDBBin() string {
 	if b := os.Getenv("AGENT_SMITH_DUCKDB"); b != "" {
 		return b
@@ -19,7 +23,6 @@ func duckDBBin() string {
 	return "duckdb"
 }
 
-// runDuckDB pipes a SQL script to `duckdb <db>` over stdin and returns stdout.
 func runDuckDB(ctx context.Context, db, script string) (string, error) {
 	cmd := exec.CommandContext(ctx, duckDBBin(), db)
 	cmd.Stdin = strings.NewReader(script)
@@ -30,4 +33,45 @@ func runDuckDB(ctx context.Context, db, script string) (string, error) {
 		return "", fmt.Errorf("duckdb failed: %w\nstderr: %s", err, stderr.String())
 	}
 	return string(out), nil
+}
+
+// renderScript renders the base pipeline plus the selected detector templates,
+// concatenated in order, into one SQL script.
+func renderScript(cfg Config) (string, error) {
+	tmpl, err := template.New("sql").ParseFS(sqlFS, "sql/*.sql.tmpl")
+	if err != nil {
+		return "", fmt.Errorf("parse templates: %w", err)
+	}
+	files := []string{"00_base.sql.tmpl"}
+	signals := cfg.Signals
+	if len(signals) == 0 {
+		signals = AllSignals
+	}
+	for _, s := range signals {
+		f, ok := signalFile[s]
+		if !ok {
+			return "", fmt.Errorf("unknown signal %q", s)
+		}
+		files = append(files, f)
+	}
+	var buf bytes.Buffer
+	for _, f := range files {
+		if err := tmpl.ExecuteTemplate(&buf, f, cfg); err != nil {
+			return "", fmt.Errorf("render %s: %w", f, err)
+		}
+		buf.WriteString("\n")
+	}
+	return buf.String(), nil
+}
+
+// Run renders the pipeline and executes it against cfg.OutDB.
+func Run(ctx context.Context, cfg Config) error {
+	script, err := renderScript(cfg)
+	if err != nil {
+		return err
+	}
+	if _, err := runDuckDB(ctx, cfg.OutDB, script); err != nil {
+		return err
+	}
+	return nil
 }

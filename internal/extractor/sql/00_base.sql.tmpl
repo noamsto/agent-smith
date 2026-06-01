@@ -1,0 +1,119 @@
+-- Durable output table (append across runs; idempotent via PK + ON CONFLICT).
+CREATE TABLE IF NOT EXISTS incidents (
+  incident_id         VARCHAR PRIMARY KEY,
+  session_id          VARCHAR,
+  project             VARCHAR,
+  ts                  VARCHAR,
+  signal_type         VARCHAR,
+  implicated_artifact VARCHAR,
+  candidates          JSON,
+  "window"            JSON,
+  confidence          VARCHAR,
+  detail              JSON
+);
+
+-- 1) Raw load: one row per jsonl line, parsed as JSON (no schema inference).
+CREATE OR REPLACE TEMP TABLE raw AS
+SELECT CAST(line AS JSON) AS j, filename
+FROM read_csv('{{.CorpusGlob}}',
+              columns={'line': 'VARCHAR'},
+              header=false, delim=e'\x01', quote='', escape='',
+              filename=true, maximum_line_size={{.MaxLineSize}}, ignore_errors=true);
+
+-- 2) Normalized records with a per-session turn ordering (by timestamp).
+CREATE OR REPLACE TEMP TABLE rec AS
+SELECT j->>'type'                      AS type,
+       j->>'sessionId'                 AS session_id,
+       j->>'uuid'                      AS uuid,
+       j->>'timestamp'                 AS ts,
+       j->>'cwd'                       AS cwd,
+       (j->>'isSidechain') = 'true'    AS is_sidechain,
+       j->'message'                    AS message,
+       j->'toolUseResult'              AS tur,
+       filename,
+       row_number() OVER (PARTITION BY j->>'sessionId'
+                          ORDER BY j->>'timestamp', j->>'uuid') AS turn
+FROM raw
+WHERE j->>'sessionId' IS NOT NULL
+{{if .Since}}  AND j->>'timestamp' >= '{{.Since}}'{{end}};
+
+-- 3) Assistant tool_use blocks (scalar fields pre-extracted as columns).
+CREATE OR REPLACE TEMP TABLE tool_uses AS
+WITH g AS (
+  SELECT session_id, turn, ts,
+         CASE WHEN json_type(message->'content') = 'ARRAY'
+              THEN CAST(message->'content' AS JSON[])
+              ELSE CAST('[]' AS JSON[]) END AS blocks
+  FROM rec WHERE type = 'assistant'
+)
+SELECT g.session_id, g.turn, g.ts,
+       c.value->>'id'                                    AS tuid,
+       c.value->>'name'                                  AS tool,
+       json_extract_string(c.value->'input', 'file_path')     AS file_path,
+       json_extract_string(c.value->'input', 'offset')        AS rd_offset,
+       json_extract_string(c.value->'input', 'limit')         AS rd_limit,
+       json_extract_string(c.value->'input', 'subagent_type') AS subagent_type,
+       CAST(c.value->'input' AS VARCHAR)                 AS input_str
+FROM g, unnest(g.blocks) AS c(value)
+WHERE c.value->>'type' = 'tool_use';
+
+-- 4) Tool results (is_error flag + read result size for inefficiency).
+CREATE OR REPLACE TEMP TABLE tool_results AS
+WITH g AS (
+  SELECT session_id, turn, ts, tur,
+         CASE WHEN json_type(message->'content') = 'ARRAY'
+              THEN CAST(message->'content' AS JSON[])
+              ELSE CAST('[]' AS JSON[]) END AS blocks
+  FROM rec WHERE type = 'user'
+)
+SELECT g.session_id, g.turn, g.ts,
+       c.value->>'tool_use_id'              AS tuid,
+       (c.value->>'is_error') = 'true'      AS is_error,
+       COALESCE((g.tur->'file'->>'totalLines')::BIGINT,
+                (g.tur->'file'->>'numLines')::BIGINT, 0) AS total_lines
+FROM g, unnest(g.blocks) AS c(value)
+WHERE c.value->>'type' = 'tool_result';
+
+-- 5) Human user text (handles both string- and array-form content).
+CREATE OR REPLACE TEMP TABLE user_text AS
+WITH g AS (
+  SELECT session_id, turn, ts,
+         CASE WHEN json_type(message->'content') = 'ARRAY'
+              THEN CAST(message->'content' AS JSON[])
+              ELSE CAST('[]' AS JSON[]) END AS blocks
+  FROM rec WHERE type = 'user'
+),
+arr AS (
+  SELECT g.session_id, g.turn, any_value(g.ts) AS ts,
+         string_agg(c.value->>'text', ' ') AS text
+  FROM g, unnest(g.blocks) AS c(value)
+  WHERE c.value->>'type' = 'text'
+  GROUP BY g.session_id, g.turn
+),
+str AS (
+  SELECT session_id, turn, ts, message->>'content' AS text
+  FROM rec
+  WHERE type = 'user' AND json_type(message->'content') = 'VARCHAR'
+)
+SELECT session_id, turn, ts, text FROM arr
+UNION ALL
+SELECT session_id, turn, ts, text FROM str;
+
+-- 6) Compact per-turn excerpt for window slices.
+CREATE OR REPLACE TEMP TABLE rec_text AS
+SELECT session_id, turn, ts, type,
+       substr(CAST(message AS VARCHAR), 1, {{.ExcerptChars}}) AS excerpt
+FROM rec;
+
+-- 7) Session-level metadata.
+CREATE OR REPLACE TEMP TABLE session_meta AS
+SELECT session_id, any_value(cwd) AS cwd, bool_or(is_sidechain) AS is_subagent
+FROM rec GROUP BY session_id;
+
+-- 8) Main-session artifact candidates (global + project CLAUDE.md).
+CREATE OR REPLACE TEMP TABLE artifact_main AS
+SELECT session_id,
+       COALESCE(cwd || '/CLAUDE.md', '{{.GlobalClaudeMd}}') AS implicated_artifact,
+       json_array('{{.GlobalClaudeMd}}',
+                  COALESCE(cwd || '/CLAUDE.md', '{{.GlobalClaudeMd}}')) AS candidates
+FROM session_meta;
