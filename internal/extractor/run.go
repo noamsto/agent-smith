@@ -77,3 +77,13 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 	return nil
 }
+
+// Summary returns per-signal incident counts from a populated db.
+func Summary(ctx context.Context, db string) (string, error) {
+	out, err := runDuckDB(ctx, db,
+		"SELECT signal_type, count(*) AS n FROM incidents GROUP BY signal_type ORDER BY signal_type;")
+	if err != nil {
+		return "", err
+	}
+	return out, nil
+}
