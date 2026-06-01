@@ -26,7 +26,7 @@ func TestToolErrorAndRetry(t *testing.T) {
 	if c["tool_error"] != 2 {
 		t.Errorf("expected 2 tool_error incidents, got %d", c["tool_error"])
 	}
-	if c["retry"] < 1 {
-		t.Errorf("expected at least 1 retry incident, got %d", c["retry"])
+	if c["retry"] != 1 {
+		t.Errorf("expected exactly 1 retry incident, got %d", c["retry"])
 	}
 }
