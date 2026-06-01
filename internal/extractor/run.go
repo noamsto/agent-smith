@@ -60,6 +60,13 @@ func renderScript(cfg Config) (string, error) {
 		files = append(files, f)
 	}
 	var buf bytes.Buffer
+	// Prepend DuckDB runtime pragmas when configured.
+	if cfg.MemoryLimit != "" {
+		fmt.Fprintf(&buf, "SET memory_limit='%s';\n", cfg.MemoryLimit)
+	}
+	if cfg.Threads > 0 {
+		fmt.Fprintf(&buf, "SET threads=%d;\n", cfg.Threads)
+	}
 	for _, f := range files {
 		if err := tmpl.ExecuteTemplate(&buf, f, cfg); err != nil {
 			return "", fmt.Errorf("render %s: %w", f, err)

@@ -12,6 +12,10 @@ type Config struct {
 	Since      string   // optional ISO8601 lower bound on record timestamp; "" = all
 	Signals    []string // which detectors to run; empty = all
 
+	// DuckDB runtime settings
+	MemoryLimit string // DuckDB memory_limit pragma (e.g. "30GB"); "" = duckdb default
+	Threads     int    // DuckDB threads pragma; 0 = duckdb default
+
 	// Loader
 	MaxLineSize int // duckdb read_csv maximum_line_size (bytes)
 
@@ -63,6 +67,8 @@ func DefaultConfig() Config {
 		OutDB:              "incidents.db",
 		Since:              "",
 		Signals:            nil,
+		MemoryLimit:        "30GB",
+		Threads:            4,
 		MaxLineSize:        134217728, // 128 MiB; transcript lines can be huge
 		WindowBefore:       3,
 		WindowAfter:        4,
