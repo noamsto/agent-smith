@@ -39,7 +39,7 @@ func TestEndToEndAllSignals(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.CorpusGlob = filepath.Join(corpus, "*.jsonl")
 	cfg.OutDB = filepath.Join(t.TempDir(), "incidents.db")
-	cfg.Signals = nil // all
+	cfg.Signals = nil    // all
 	cfg.MemoryLimit = "" // tiny fixture; avoid the production cap (see testConfig)
 	if err := Run(context.Background(), cfg); err != nil {
 		t.Fatalf("Run: %v", err)
