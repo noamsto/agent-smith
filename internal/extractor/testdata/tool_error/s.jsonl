@@ -1,0 +1,4 @@
+{"type":"assistant","sessionId":"e1","uuid":"a1","timestamp":"2026-05-03T10:00:00Z","cwd":"/home/noams/p","message":{"role":"assistant","content":[{"type":"tool_use","id":"x1","name":"Bash","input":{"command":"ls /nope"}}]}}
+{"type":"user","sessionId":"e1","uuid":"u1","timestamp":"2026-05-03T10:00:01Z","cwd":"/home/noams/p","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"x1","is_error":true,"content":"No such file"}]}}
+{"type":"assistant","sessionId":"e1","uuid":"a2","timestamp":"2026-05-03T10:00:05Z","cwd":"/home/noams/p","message":{"role":"assistant","content":[{"type":"tool_use","id":"x2","name":"Bash","input":{"command":"ls /nope"}}]}}
+{"type":"user","sessionId":"e1","uuid":"u2","timestamp":"2026-05-03T10:00:06Z","cwd":"/home/noams/p","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"x2","is_error":true,"content":"No such file"}]}}

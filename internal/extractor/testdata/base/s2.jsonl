@@ -1,0 +1,2 @@
+{"type":"assistant","sessionId":"s2","uuid":"b1","timestamp":"2026-05-02T09:00:00Z","cwd":"/home/noams/projB","isSidechain":true,"message":{"role":"assistant","content":[{"type":"tool_use","id":"k1","name":"Bash","input":{"command":"ls /nope"}}]}}
+{"type":"user","sessionId":"s2","uuid":"b2","timestamp":"2026-05-02T09:00:30Z","cwd":"/home/noams/projB","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"k1","is_error":true,"content":"No such file"}]}}
