@@ -27,7 +27,7 @@ nix build .#default
 | `tool_error` | a tool_result with `is_error=true` | medium |
 | `retry` | identical tool+input within `RetryWindowTurns` (5) turns | low |
 | `user_correction` | negation/interruption text within `CorrectionLookback` (2) turns after a tool_use | medium |
-| `orchestrator_disagreement` | disagreement text within `DisagreeWindow` (4) turns after a `Task` result (main sessions only) | low |
+| `orchestrator_disagreement` | overrule/redo text within `DisagreeWindow` (4) turns after an `Agent`/`Task` subagent result (main sessions only) | low |
 
 `repeated_guidance` is NOT produced here — the analyst emits it by clustering
 corrections across >=3 sessions.
@@ -81,11 +81,18 @@ knobs rather than a required workaround.
 | `inefficiency` | 146 |
 | `orchestrator_disagreement` | 0 |
 
-**`orchestrator_disagreement: 0` (§10 tuning candidate):** No disagreement
-incidents fired across the whole corpus. Zero hits suggests the detector is too
-narrow — the regex or the 4-turn `DisagreeWindow` likely misses how disagreement
-actually reads in main sessions (or `Task` results are rarer than assumed). Worth
-revisiting the regex/window in §10.
+**`orchestrator_disagreement: 0` — diagnosed and recalibrated.** The original 0 was
+a structural bug: the detector keyed on a tool named `Task`, but this environment
+spawns subagents via `Agent` (the corpus contains **0** `Task` tool-uses and **637**
+`Agent` uses carrying `subagent_type`). Fixed to match `Agent`/`Task`; the join +
+window then correctly surface candidates (8 `Agent`-result → reaction sequences), and
+the regex was retuned to overrule/redo phrasings. The count is still 0 — but now
+*correctly*: this user's `Agent` usage is overwhelmingly **async fan-out** (background/
+parallel teammate spawns whose result is just "Spawned successfully"), not synchronous
+delegate-then-review, so genuine overrules are rare. **Remaining §10 item:** a
+background agent reports completion via a later `<task-notification>` (a user message,
+often beyond the 4-turn window), so detecting reactions to *async* subagent results
+needs task-notification correlation, not a turn-window anchored on the spawn ack.
 
 **Inefficiency deep-cut:** 146 incidents across 86 distinct sessions — whole-file
 reads (≥300 lines, no offset/limit) are common in real sessions.

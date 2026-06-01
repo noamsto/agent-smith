@@ -19,11 +19,14 @@ WITH events AS (
    AND d.turn > tres.turn
    AND d.turn - tres.turn <= {{.DisagreeWindow}}
   JOIN session_meta sm ON sm.session_id = task.session_id
-  WHERE task.tool = 'Task'
+  WHERE task.tool IN ('Agent', 'Task')  -- subagents spawn via Agent (this env) or Task (other CC setups)
     AND task.subagent_type IS NOT NULL
     AND NOT sm.is_subagent  -- only main-session orchestrators overrule a subagent
-    -- NB: matches the disagreement regex against the stringified-JSON excerpt, not just
-    -- text content — a deliberate over-collecting heuristic (hence confidence='low').
+    -- Match overrule/redo language in the assistant reaction. Matched against the
+    -- stringified-JSON excerpt (includes text + thinking) — an over-collecting
+    -- heuristic, hence confidence='low'. NB: most Agent usage in practice is async
+    -- fan-out (background/parallel spawns), not sync delegate-then-review, so this
+    -- signal is legitimately sparse; it fires on genuine overrules, not coordination.
     AND regexp_matches(lower(d.excerpt), '{{.DisagreeRegex}}')
 )
 {{template "windowed_insert" .}}

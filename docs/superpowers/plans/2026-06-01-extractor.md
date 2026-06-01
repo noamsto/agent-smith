@@ -289,7 +289,7 @@ func DefaultConfig() Config {
 		CorrectionLookback: 2,
 		DisagreeWindow:     4,
 		CorrectionRegex:    `(\bno\b|\bdon.?t\b|\bactually\b|\brevert\b|that.?s wrong|\bwrong\b|\bundo\b|\bnope\b|incorrect|\bstop\b)`,
-		DisagreeRegex:      `(that.?s not right|incorrect|disagree|the subagent|let me redo|i.?ll do this myself|not what i asked|\bwrong\b|redo this)`,
+		DisagreeRegex:      `(\bdisagree|not what i asked|that.?s not right|that.?s not correct|that.?s wrong|that.?s incorrect|let me redo|let me just redo|i.?ll redo|i.?ll do this myself|i.?ll do it myself|redo this myself|the subagent is wrong|the subagent was wrong|subagent got it wrong|subagent is incorrect|ignore the subagent|\boverrule)`,  // overrule-specific; omits bare wrong/incorrect
 		GlobalClaudeMd:     filepath.Join(home, ".claude", "CLAUDE.md"),
 		AgentsDir:          filepath.Join(home, "nix-config", "home", "ai", "claude-code", "agents"),
 	}
@@ -1062,11 +1062,11 @@ WITH events AS (
    AND d.turn > tres.turn
    AND d.turn - tres.turn <= {{.DisagreeWindow}}
   JOIN session_meta sm ON sm.session_id = task.session_id
-  WHERE task.tool = 'Task'
+  WHERE task.tool IN ('Agent', 'Task')  -- subagents spawn via Agent (this env) or Task (other CC setups)
     AND task.subagent_type IS NOT NULL
     AND NOT sm.is_subagent  -- only main-session orchestrators overrule a subagent
-    -- NB: matches the disagreement regex against the stringified-JSON excerpt, not just
-    -- text content — a deliberate over-collecting heuristic (hence confidence='low').
+    -- Overrule/redo language in the assistant reaction, matched against the stringified-JSON
+    -- excerpt (text + thinking) — an over-collecting heuristic, hence confidence='low'.
     AND regexp_matches(lower(d.excerpt), '{{.DisagreeRegex}}')
 )
 {{template "windowed_insert" .}}
@@ -1435,4 +1435,4 @@ These emerged during subagent-driven execution and reviews; the plan above was u
 - **Three-valued logic on `isSidechain`** — `is_sidechain` uses `COALESCE((j->>'isSidechain')='true', false)` so absent fields read as `false` and `NOT is_subagent` filters work.
 - **`orchestrator_disagreement` scoped to main sessions** — added `AND NOT sm.is_subagent`.
 - **`--signals` token hygiene** — trimmed + empty-skipped in `main.go`; `renderScript` also skips empty tokens.
-- **OOM on the real corpus (Task 10), and the loader rewrite that resolved it** — the original `read_csv`-based loader (lines as VARCHAR → `CAST AS JSON`) OOM'd because `read_csv` eagerly reserves a `maximum_line_size × threads` buffer (128 MiB × 16 cores ≈ 30-44 GB, OOMing *regardless of* `memory_limit`). An interim fix dropped `MaxLineSize` to 8 MiB. The **final** fix (post-review, using the duckdb-skills docs) replaced the whole hack with **`read_ndjson_objects(..., ignore_errors=true, filename=true)`** — DuckDB's purpose-built raw-NDJSON reader, which performs no schema inference *and* doesn't pre-reserve line buffers, so it streams the full corpus at default memory. This removed the `MaxLineSize` knob entirely (per-object size now bounded by duckdb's `maximum_object_size`, 16 MiB default). Verified parity: identical detection (inefficiency 146/86 sessions, retry 2318; high-volume signals drift only with live-corpus growth), ~7s. `MemoryLimit`/`Threads` (default `"8GB"`/0, validated via `(?i)^[0-9]+\s?(b|kb|mb|gb|tb)$`, exposed as `--memory-limit`/`--threads`) are retained as optional safety knobs. **§10 candidate:** `orchestrator_disagreement`=0 across the corpus suggests its regex/window is too narrow.
+- **OOM on the real corpus (Task 10), and the loader rewrite that resolved it** — the original `read_csv`-based loader (lines as VARCHAR → `CAST AS JSON`) OOM'd because `read_csv` eagerly reserves a `maximum_line_size × threads` buffer (128 MiB × 16 cores ≈ 30-44 GB, OOMing *regardless of* `memory_limit`). An interim fix dropped `MaxLineSize` to 8 MiB. The **final** fix (post-review, using the duckdb-skills docs) replaced the whole hack with **`read_ndjson_objects(..., ignore_errors=true, filename=true)`** — DuckDB's purpose-built raw-NDJSON reader, which performs no schema inference *and* doesn't pre-reserve line buffers, so it streams the full corpus at default memory. This removed the `MaxLineSize` knob entirely (per-object size now bounded by duckdb's `maximum_object_size`, 16 MiB default). Verified parity: identical detection (inefficiency 146/86 sessions, retry 2318; high-volume signals drift only with live-corpus growth), ~7s. `MemoryLimit`/`Threads` (default `"8GB"`/0, validated via `(?i)^[0-9]+\s?(b|kb|mb|gb|tb)$`, exposed as `--memory-limit`/`--threads`) are retained as optional safety knobs. **`orchestrator_disagreement` calibration (resolved):** the 0-count was a structural bug — the detector keyed on a tool named `Task`, but this environment spawns subagents via **`Agent`** (no `Task` tool exists in the corpus). Fixed to `tool IN ('Agent','Task')`. With that, the join+window correctly surface candidates (verified: 8 Agent-result→reaction sequences), and the regex was retuned to overrule/redo phrasings (dropping bare `wrong`/`incorrect`/`the subagent`, which match agreement). Real count is still 0 — but now *correctly*: this user's `Agent` usage is overwhelmingly **async fan-out** (background/parallel teammate spawns whose result is "Spawned successfully"), not synchronous delegate-then-review, so genuine overrules are rare. **Remaining §10 item:** background agents report completion via a later `<task-notification>` (often >`DisagreeWindow` turns out, as a user message, not a tool_result), so the sync-anchored window can't see the orchestrator's reaction to async results — proper detection needs task-notification correlation.
