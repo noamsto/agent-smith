@@ -1,0 +1,14 @@
+# agent-smith artifacts — machine-local, never committed
+incidents.db
+*.duckdb
+proposals.json
+corpus/
+
+# Nix
+result
+result-*
+.direnv/
+
+# Editor / OS
+.DS_Store
+*.swp

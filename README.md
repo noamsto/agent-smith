@@ -1,10 +1,16 @@
 <div align="center">
 
-# agent-smith
+# 🕶️ agent-smith
 
 **An Agent whose only purpose is propagating improvements into other agents.**
 
 *It patrols the agents-matrix, finds the glitches where reality stuttered, and rewrites the rules so the déjà vu stops happening.*
+
+[![status](https://img.shields.io/badge/status-design--stage-1a1a1a)](docs/specs/2026-06-01-agent-smith-design.md)
+[![engine](https://img.shields.io/badge/engine-DuckDB%20%2B%20Opus-00ff41?labelColor=1a1a1a)](#the-two-ways-it-sees)
+[![built for](https://img.shields.io/badge/built%20for-Claude%20Code-8A2BE2?labelColor=1a1a1a)](https://docs.claude.com/en/docs/claude-code)
+[![packaged with](https://img.shields.io/badge/packaged%20with-Nix-5277C3?logo=nixos&logoColor=white&labelColor=1a1a1a)](https://nixos.org)
+[![license](https://img.shields.io/badge/license-MIT-00ff41?labelColor=1a1a1a)](LICENSE)
 
 </div>
 
@@ -28,7 +34,7 @@ glitch actually stopped recurring.
 
 ---
 
-## The two ways it sees
+## 🕶️ The two ways it sees
 
 agent-smith runs two intelligence tracks into one mind. One looks *backward* at
 what happened; the other looks *outward* at what's still true.
@@ -122,6 +128,8 @@ Design-stage. The architecture is specified and approved; implementation is next
 ---
 
 <div align="center">
+
+🕶️
 
 *There is no spoon. There is only the diff.*
 
