@@ -50,6 +50,9 @@ func renderScript(cfg Config) (string, error) {
 		signals = AllSignals
 	}
 	for _, s := range signals {
+		if s == "" {
+			continue
+		}
 		f, ok := signalFile[s]
 		if !ok {
 			return "", fmt.Errorf("unknown signal %q", s)

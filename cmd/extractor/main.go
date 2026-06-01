@@ -20,8 +20,10 @@ func main() {
 	flag.StringVar(&signals, "signals", "", "comma-separated signals (default: all)")
 	flag.Parse()
 
-	if signals != "" {
-		cfg.Signals = strings.Split(signals, ",")
+	for _, s := range strings.Split(signals, ",") {
+		if s = strings.TrimSpace(s); s != "" { // tolerate "a, b" and trailing commas
+			cfg.Signals = append(cfg.Signals, s)
+		}
 	}
 
 	ctx := context.Background()

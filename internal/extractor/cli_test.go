@@ -59,7 +59,9 @@ func TestSignalsFilter(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 	c := countBySignal(t, cfg.OutDB)
-	if c["tool_error"] != 0 || c["retry"] != 0 {
-		t.Errorf("expected only inefficiency signals, got %v", c)
+	for sig := range c {
+		if sig != "inefficiency" {
+			t.Errorf("filter leaked: expected only inefficiency signals, got %q in %v", sig, c)
+		}
 	}
 }
