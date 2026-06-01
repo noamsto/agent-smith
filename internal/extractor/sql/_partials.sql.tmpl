@@ -1,0 +1,18 @@
+{{define "windowed_insert"}}
+, win AS (
+  SELECT e.incident_id,
+         json_group_array(json_object('turn', rt.turn, 'type', rt.type, 'excerpt', rt.excerpt)
+                          ORDER BY rt.turn) AS "window"
+  FROM events e
+  JOIN rec_text rt
+    ON rt.session_id = e.session_id
+   AND rt.turn BETWEEN e.turn - {{.WindowBefore}} AND e.turn + {{.WindowAfter}}
+  GROUP BY e.incident_id
+)
+INSERT INTO incidents
+SELECT e.incident_id, e.session_id, e.project, e.ts, e.signal_type,
+       e.implicated_artifact, e.candidates, w."window", e.confidence, e.detail
+FROM events e
+LEFT JOIN win w USING (incident_id)
+ON CONFLICT (incident_id) DO NOTHING;
+{{end}}

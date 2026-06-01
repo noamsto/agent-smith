@@ -70,6 +70,29 @@ func jsonCount(t *testing.T, v any) int {
 	}
 }
 
+func TestIncidentIDIsIdempotent(t *testing.T) {
+	db := filepath.Join(t.TempDir(), "incidents.db")
+	ddl := `CREATE TABLE incidents (
+	  incident_id VARCHAR PRIMARY KEY, session_id VARCHAR, project VARCHAR, ts VARCHAR,
+	  signal_type VARCHAR, implicated_artifact VARCHAR, candidates JSON, "window" JSON,
+	  confidence VARCHAR, detail JSON);`
+	ins := `INSERT INTO incidents VALUES
+	  (md5('s1:3:inefficiency'),'s1','/p','2026-05-01T10:00:00Z','inefficiency',
+	   '/c.md', '["a"]'::JSON, '[]'::JSON, 'high', '{}'::JSON)
+	  ON CONFLICT (incident_id) DO NOTHING;`
+	ctx := context.Background()
+	if _, err := runDuckDB(ctx, db, ddl+ins); err != nil {
+		t.Fatalf("first insert: %v", err)
+	}
+	if _, err := runDuckDB(ctx, db, ins); err != nil { // re-run same insert
+		t.Fatalf("second insert: %v", err)
+	}
+	rows := query(t, db, "SELECT count(*) AS n FROM incidents;")
+	if n := jsonCount(t, rows[0]["n"]); n != 1 {
+		t.Fatalf("expected 1 incident after duplicate insert, got %d", n)
+	}
+}
+
 // TestBasePipelineBuildsDerivedTables renders ONLY the base template (no detector
 // files exist yet) and confirms it loads the corpus into the derived tables.
 func TestBasePipelineBuildsDerivedTables(t *testing.T) {
