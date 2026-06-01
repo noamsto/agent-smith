@@ -1,10 +1,13 @@
 {{define "windowed_insert"}}
 , win AS (
   SELECT e.incident_id,
-         json_group_array(json_object('turn', rt.turn, 'type', rt.type, 'excerpt', rt.excerpt)
-                          ORDER BY rt.turn) AS "window"
+         json_group_array(json_object('turn', rt.turn, 'type', rt.type, 'excerpt', rt.excerpt)) AS "window"
   FROM events e
-  JOIN rec_text rt
+  JOIN (
+    SELECT session_id, turn, type, excerpt
+    FROM rec_text
+    ORDER BY session_id, turn
+  ) rt
     ON rt.session_id = e.session_id
    AND rt.turn BETWEEN e.turn - {{.WindowBefore}} AND e.turn + {{.WindowAfter}}
   GROUP BY e.incident_id

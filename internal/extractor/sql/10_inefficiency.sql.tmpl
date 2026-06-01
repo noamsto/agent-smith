@@ -1,0 +1,25 @@
+-- inefficiency: whole-file Read (no offset, no limit) of a large file.
+WITH events AS (
+  SELECT
+    md5(tu.session_id || ':' || CAST(tu.turn AS VARCHAR) || ':inefficiency') AS incident_id,
+    tu.session_id,
+    sm.cwd AS project,
+    tu.ts,
+    'inefficiency' AS signal_type,
+    am.implicated_artifact,
+    am.candidates,
+    CASE WHEN tr.total_lines >= {{.HighLines}}   THEN 'high'
+         WHEN tr.total_lines >= {{.MediumLines}} THEN 'medium'
+         ELSE 'low' END AS confidence,
+    json_object('tool', 'Read', 'file_path', tu.file_path, 'total_lines', tr.total_lines) AS detail,
+    tu.turn
+  FROM tool_uses tu
+  JOIN tool_results tr ON tr.session_id = tu.session_id AND tr.tuid = tu.tuid
+  JOIN session_meta  sm ON sm.session_id = tu.session_id
+  JOIN artifact_main am ON am.session_id = tu.session_id
+  WHERE tu.tool = 'Read'
+    AND tu.rd_offset IS NULL
+    AND tu.rd_limit  IS NULL
+    AND tr.total_lines >= {{.LargeFileLines}}
+)
+{{template "windowed_insert" .}}
