@@ -1,0 +1,5 @@
+{
+  "enabledPlugins": {
+    "duckdb-skills@duckdb-skills": true
+  }
+}

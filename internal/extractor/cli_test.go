@@ -19,7 +19,6 @@ func TestEndToEndAllSignals(t *testing.T) {
 		filepath.Join("testdata", "base"),
 		filepath.Join("testdata", "tool_error"),
 		filepath.Join("testdata", "user_correction"),
-		filepath.Join("testdata", "orchestrator"),
 		filepath.Join("..", "..", "fixtures", "skeleton-first"),
 	}
 	for i, dir := range srcs {
@@ -46,7 +45,7 @@ func TestEndToEndAllSignals(t *testing.T) {
 	}
 
 	c := countBySignal(t, cfg.OutDB)
-	for _, want := range []string{"inefficiency", "tool_error", "user_correction", "orchestrator_disagreement"} {
+	for _, want := range []string{"inefficiency", "tool_error", "user_correction"} {
 		if c[want] < 1 {
 			t.Errorf("expected >=1 %s incident across the combined corpus, got %d", want, c[want])
 		}

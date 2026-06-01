@@ -30,7 +30,6 @@ func testConfig(t *testing.T, fixtureDir string, signals ...string) Config {
 	cfg.OutDB = filepath.Join(t.TempDir(), "incidents.db")
 	cfg.Signals = signals
 	cfg.GlobalClaudeMd = "/home/noams/.claude/CLAUDE.md"
-	cfg.AgentsDir = "/agents"
 	// Fixtures are tiny; the production memory_limit is sized for the 480MB real
 	// corpus. Under parallel `go test` an explicit cap makes DuckDB eagerly
 	// reserve against the shared cgroup and OOM, so let fixtures use the lazy

@@ -52,7 +52,7 @@ agent-smith/
 - Every detector's `events` CTE projects exactly these columns, in this order:
   `incident_id, session_id, project, ts, signal_type, implicated_artifact, candidates, confidence, detail, turn`.
 - TEMP tables created by `00_base`: `raw`, `rec`, `tool_uses`, `tool_results`, `user_text`, `rec_text`, `session_meta`, `artifact_main`.
-- Signal names (CLI + file mapping): `inefficiency`→`10_inefficiency`, `tool_error`→`20_tool_error` (also emits `retry`), `user_correction`→`30_user_correction`, `orchestrator_disagreement`→`40_orchestrator_disagreement`.
+- Signal names (CLI + file mapping): `inefficiency`→`10_inefficiency`, `tool_error`→`20_tool_error` (also emits `retry`), `user_correction`→`30_user_correction`. (`orchestrator_disagreement` was prototyped as Task 7 then **removed** — see the banner on Task 7 and `docs/extractor.md` § Deferred signals.)
 
 ---
 
@@ -239,18 +239,15 @@ type Config struct {
 	MediumLines    int
 	HighLines      int
 
-	// retry / correction / disagreement windows
+	// retry / correction windows
 	RetryWindowTurns   int
 	CorrectionLookback int
-	DisagreeWindow     int
 
 	// regexes (RE2; no single quotes — they break SQL string literals)
 	CorrectionRegex string
-	DisagreeRegex   string
 
 	// artifact resolution
 	GlobalClaudeMd string // path to global CLAUDE.md
-	AgentsDir      string // dir holding subagent .md files
 }
 
 // AllSignals is the canonical ordered detector list.
@@ -258,15 +255,13 @@ var AllSignals = []string{
 	"inefficiency",
 	"tool_error",
 	"user_correction",
-	"orchestrator_disagreement",
 }
 
 // signalFile maps a signal name to its SQL template filename.
 var signalFile = map[string]string{
-	"inefficiency":              "10_inefficiency.sql.tmpl",
-	"tool_error":                "20_tool_error.sql.tmpl",
-	"user_correction":           "30_user_correction.sql.tmpl",
-	"orchestrator_disagreement": "40_orchestrator_disagreement.sql.tmpl",
+	"inefficiency":    "10_inefficiency.sql.tmpl",
+	"tool_error":      "20_tool_error.sql.tmpl",
+	"user_correction": "30_user_correction.sql.tmpl",
 }
 
 // DefaultConfig returns production defaults, resolving paths under $HOME.
@@ -287,11 +282,8 @@ func DefaultConfig() Config {
 		HighLines:          1000,
 		RetryWindowTurns:   5,
 		CorrectionLookback: 2,
-		DisagreeWindow:     4,
 		CorrectionRegex:    `(\bno\b|\bdon.?t\b|\bactually\b|\brevert\b|that.?s wrong|\bwrong\b|\bundo\b|\bnope\b|incorrect|\bstop\b)`,
-		DisagreeRegex:      `(\bdisagree|not what i asked|that.?s not right|that.?s not correct|that.?s wrong|that.?s incorrect|let me redo|let me just redo|i.?ll redo|i.?ll do this myself|i.?ll do it myself|redo this myself|the subagent is wrong|the subagent was wrong|subagent got it wrong|subagent is incorrect|ignore the subagent|\boverrule)`,  // overrule-specific; omits bare wrong/incorrect
 		GlobalClaudeMd:     filepath.Join(home, ".claude", "CLAUDE.md"),
-		AgentsDir:          filepath.Join(home, "nix-config", "home", "ai", "claude-code", "agents"),
 	}
 }
 ```
@@ -1031,6 +1023,17 @@ git commit -m "feat(extractor): user_correction detector"
 
 ## Task 7: orchestrator_disagreement detector
 
+> ⚠️ **DEFERRED — removed from Phase 1 after implementation.** This was built, then
+> removed once real-corpus data showed it has no honest home in a deterministic
+> extractor: it's a semantic judgment (regex can't decide it), and the dominant
+> async fan-out usage pattern gives it no cheap structural anchor (the subagent's
+> real output arrives via a later `<task-notification>`, far outside any spawn-anchored
+> window; the obvious "re-delegation" tell floods on parallel dispatch). The
+> subagent-quality goal moves to Phase 2 (sidechain-glitch → subagent `.md`
+> attribution + analyst-judged async correlation, hook-assisted capture). Full
+> rationale in `docs/extractor.md` § Deferred signals. The steps below are retained
+> as the historical record of what was prototyped.
+
 **Files:**
 - Create: `internal/extractor/sql/40_orchestrator_disagreement.sql.tmpl`
 - Create: `internal/extractor/testdata/orchestrator/s.jsonl`
@@ -1435,4 +1438,4 @@ These emerged during subagent-driven execution and reviews; the plan above was u
 - **Three-valued logic on `isSidechain`** — `is_sidechain` uses `COALESCE((j->>'isSidechain')='true', false)` so absent fields read as `false` and `NOT is_subagent` filters work.
 - **`orchestrator_disagreement` scoped to main sessions** — added `AND NOT sm.is_subagent`.
 - **`--signals` token hygiene** — trimmed + empty-skipped in `main.go`; `renderScript` also skips empty tokens.
-- **OOM on the real corpus (Task 10), and the loader rewrite that resolved it** — the original `read_csv`-based loader (lines as VARCHAR → `CAST AS JSON`) OOM'd because `read_csv` eagerly reserves a `maximum_line_size × threads` buffer (128 MiB × 16 cores ≈ 30-44 GB, OOMing *regardless of* `memory_limit`). An interim fix dropped `MaxLineSize` to 8 MiB. The **final** fix (post-review, using the duckdb-skills docs) replaced the whole hack with **`read_ndjson_objects(..., ignore_errors=true, filename=true)`** — DuckDB's purpose-built raw-NDJSON reader, which performs no schema inference *and* doesn't pre-reserve line buffers, so it streams the full corpus at default memory. This removed the `MaxLineSize` knob entirely (per-object size now bounded by duckdb's `maximum_object_size`, 16 MiB default). Verified parity: identical detection (inefficiency 146/86 sessions, retry 2318; high-volume signals drift only with live-corpus growth), ~7s. `MemoryLimit`/`Threads` (default `"8GB"`/0, validated via `(?i)^[0-9]+\s?(b|kb|mb|gb|tb)$`, exposed as `--memory-limit`/`--threads`) are retained as optional safety knobs. **`orchestrator_disagreement` calibration (resolved):** the 0-count was a structural bug — the detector keyed on a tool named `Task`, but this environment spawns subagents via **`Agent`** (no `Task` tool exists in the corpus). Fixed to `tool IN ('Agent','Task')`. With that, the join+window correctly surface candidates (verified: 8 Agent-result→reaction sequences), and the regex was retuned to overrule/redo phrasings (dropping bare `wrong`/`incorrect`/`the subagent`, which match agreement). Real count is still 0 — but now *correctly*: this user's `Agent` usage is overwhelmingly **async fan-out** (background/parallel teammate spawns whose result is "Spawned successfully"), not synchronous delegate-then-review, so genuine overrules are rare. **Remaining §10 item:** background agents report completion via a later `<task-notification>` (often >`DisagreeWindow` turns out, as a user message, not a tool_result), so the sync-anchored window can't see the orchestrator's reaction to async results — proper detection needs task-notification correlation.
+- **OOM on the real corpus (Task 10), and the loader rewrite that resolved it** — the original `read_csv`-based loader (lines as VARCHAR → `CAST AS JSON`) OOM'd because `read_csv` eagerly reserves a `maximum_line_size × threads` buffer (128 MiB × 16 cores ≈ 30-44 GB, OOMing *regardless of* `memory_limit`). An interim fix dropped `MaxLineSize` to 8 MiB. The **final** fix (post-review, using the duckdb-skills docs) replaced the whole hack with **`read_ndjson_objects(..., ignore_errors=true, filename=true)`** — DuckDB's purpose-built raw-NDJSON reader, which performs no schema inference *and* doesn't pre-reserve line buffers, so it streams the full corpus at default memory. This removed the `MaxLineSize` knob entirely (per-object size now bounded by duckdb's `maximum_object_size`, 16 MiB default). Verified parity: identical detection (inefficiency 146/86 sessions, retry 2318; high-volume signals drift only with live-corpus growth), ~7s. `MemoryLimit`/`Threads` (default `"8GB"`/0, validated via `(?i)^[0-9]+\s?(b|kb|mb|gb|tb)$`, exposed as `--memory-limit`/`--threads`) are retained as optional safety knobs. **`orchestrator_disagreement` removed from Phase 1 (was Task 7).** Diagnosis path: the 0-count first looked like a too-narrow regex, but the real cause was the tool name (`Task` vs this env's `Agent`; 0 `Task` uses, 637 `Agent`). Fixing that exposed the deeper truth — the signal is a *semantic* judgment with no cheap structural anchor on async-fan-out usage (the obvious "re-delegation" tell floods on parallel dispatch; background agents report via a later `<task-notification>` outside any spawn-anchored window). So rather than ship a regex doing semantics or a flooding structural proxy, the detector was **removed** (file, fixture, test, `AllSignals`/`signalFile`, and the `Disagree*`/`AgentsDir` config). The subagent-quality goal moves to Phase 2: (1) attribute a sidechain session's own glitches to the subagent's `.md` (structural, already-collected incident types); (2) analyst-judged overrule detection over `agent_id`-correlated task-notifications, a strong Phase-3 inline-capture candidate. Full rationale: `docs/extractor.md` § Deferred signals.

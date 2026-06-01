@@ -27,10 +27,10 @@ nix build .#default
 | `tool_error` | a tool_result with `is_error=true` | medium |
 | `retry` | identical tool+input within `RetryWindowTurns` (5) turns | low |
 | `user_correction` | negation/interruption text within `CorrectionLookback` (2) turns after a tool_use | medium |
-| `orchestrator_disagreement` | overrule/redo text within `DisagreeWindow` (4) turns after an `Agent`/`Task` subagent result (main sessions only) | low |
 
 `repeated_guidance` is NOT produced here — the analyst emits it by clustering
-corrections across >=3 sessions.
+corrections across >=3 sessions. `orchestrator_disagreement` is **deferred** — see
+[Deferred signals](#deferred-signals) below.
 
 ## Schema (`incidents` table)
 
@@ -79,20 +79,8 @@ knobs rather than a required workaround.
 | `tool_error` | 1664 |
 | `user_correction` | 902 |
 | `inefficiency` | 146 |
-| `orchestrator_disagreement` | 0 |
 
-**`orchestrator_disagreement: 0` — diagnosed and recalibrated.** The original 0 was
-a structural bug: the detector keyed on a tool named `Task`, but this environment
-spawns subagents via `Agent` (the corpus contains **0** `Task` tool-uses and **637**
-`Agent` uses carrying `subagent_type`). Fixed to match `Agent`/`Task`; the join +
-window then correctly surface candidates (8 `Agent`-result → reaction sequences), and
-the regex was retuned to overrule/redo phrasings. The count is still 0 — but now
-*correctly*: this user's `Agent` usage is overwhelmingly **async fan-out** (background/
-parallel teammate spawns whose result is just "Spawned successfully"), not synchronous
-delegate-then-review, so genuine overrules are rare. **Remaining §10 item:** a
-background agent reports completion via a later `<task-notification>` (a user message,
-often beyond the 4-turn window), so detecting reactions to *async* subagent results
-needs task-notification correlation, not a turn-window anchored on the spawn ack.
+(`orchestrator_disagreement` is not an extractor signal — see [Deferred signals](#deferred-signals).)
 
 **Inefficiency deep-cut:** 146 incidents across 86 distinct sessions — whole-file
 reads (≥300 lines, no offset/limit) are common in real sessions.
@@ -110,3 +98,42 @@ repo is by far the heaviest-use project.
 and CLAUDE.md — but the file may no longer exist on disk after the branch is
 deleted. The analyst should check for file existence before surfacing these as
 actionable. This is tracked as a threshold-tuning concern for §10.
+
+## Deferred signals
+
+### `orchestrator_disagreement` (removed from Phase 1)
+
+The spec lists an "orchestrator overrules its subagent" signal — the only one that
+implicates a *subagent's* `.md`. It was prototyped and then **removed**, because it
+has no honest home in a cheap, deterministic extractor:
+
+- **It's a semantic judgment, not a structural fact.** "Did the orchestrator overrule
+  the subagent" depends on intent, expressed in unbounded prose. Regex can't decide it
+  (poor recall on paraphrase, poor precision on benign matches like "the subagent found
+  where X is *wrong*").
+- **No cheap structural proxy works on real usage.** Empirically, this corpus's `Agent`
+  usage is overwhelmingly **async fan-out** (background/parallel teammate spawns; 637
+  `Agent` uses, only ~8 synchronous result→reaction sequences, all coordination). The
+  obvious structural tell — *re-delegation* (same `subagent_type` re-spawned within K
+  turns) — is exactly what parallel fan-out does normally, so it floods with false
+  positives. And a background agent's tool_result is just `"Spawned successfully"`; its
+  real output arrives much later as a `<task-notification>` (a user message, far outside
+  any turn window), so a window anchored on the spawn can't see the overrule at all.
+- **Putting an LLM in the extractor is the wrong fix.** The extractor must stay
+  deterministic and free so `deja-vu` can re-mine history cheaply; an LLM call per
+  re-mine breaks that. LLM judgment belongs in the analyst.
+
+**Where the value actually lives (Phase 2):**
+
+1. **Subagent-quality via sidechain attribution** — a deficient subagent shows up as
+   glitches *in its own session*: the extractor already detects `tool_error`/`retry`/
+   `inefficiency`; the missing piece is resolving a sidechain session's
+   `implicated_artifact` to the subagent's `.md` (the agent identity is in the
+   sidechain's opening). This answers "which subagents are failing" structurally,
+   without judging intent.
+2. **True overrule detection** — correlate a `<task-notification>` back to its spawning
+   `Agent` call by `agent_id`, then have the **analyst** judge the orchestrator's
+   reaction to the *completion*. This is analyst + correlation work, and a strong
+   candidate for **Phase-3 inline capture**: a runtime hook can record the
+   spawn→completion→reaction triple cleanly, with the `agent_id` in hand, instead of
+   reverse-engineering it from async jsonl.
