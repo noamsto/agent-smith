@@ -12,3 +12,6 @@ result-*
 # Editor / OS
 .DS_Store
 *.swp
+
+# Claude Code machine-local config
+.claude/
