@@ -52,13 +52,17 @@ the pipeline SQL and validated against `^[0-9]+(b|kb|mb|gb|tb)$` (it is interpol
 into a `SET` statement, including from the flag, so a bad value is rejected rather
 than executed). Override via `--memory-limit` / `--threads`.
 
-The base loader uses `ignore_errors=true` and an 8 MiB `maximum_line_size`, so
-malformed lines are skipped rather than fatal. 8 MiB was chosen deliberately: the
-longest real transcript line in the corpus is ~0.5 MiB, and DuckDB sizes its CSV
-read buffer eagerly at roughly `maximum_line_size x threads`. The previous 128 MiB
-value made that reservation balloon to 30-44 GB and OOM on the full corpus
-*regardless of* `memory_limit` — shrinking the line size is what actually fixed the
-OOM. 8 MiB keeps a ~15x margin over the largest observed line.
+The base loader reads each line as a raw JSON value via
+`read_ndjson_objects(..., ignore_errors=true)` — the purpose-built reader for
+newline-delimited JSON, which performs no schema inference (so every field stays
+accessible and timestamps aren't coerced). Unlike `read_csv`, it does not
+pre-reserve a `maximum_line_size x threads` read buffer, so it streams the full
+corpus at default memory without OOM (an earlier `read_csv`-based loader OOM'd
+because a 128 MiB line-size reservation ballooned to 30-44 GB regardless of
+`memory_limit`). Malformed/blank lines are skipped; per-object size is bounded by
+DuckDB's `maximum_object_size` (16 MiB default), well above the ~0.5 MiB largest
+observed line. The `memory_limit`/`threads` pragmas above are now optional safety
+knobs rather than a required workaround.
 
 ## Last verification run
 

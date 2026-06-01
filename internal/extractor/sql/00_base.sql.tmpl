@@ -12,13 +12,14 @@ CREATE TABLE IF NOT EXISTS incidents (
   detail              JSON
 );
 
--- 1) Raw load: one row per jsonl line, parsed as JSON (no schema inference).
+-- 1) Raw load: one row per jsonl line as a raw JSON value (no schema inference).
+-- read_ndjson_objects is the purpose-built reader; unlike read_csv it does not
+-- pre-reserve a maximum_line_size x threads buffer, so it streams the whole corpus
+-- without OOM. Malformed/blank lines are skipped (ignore_errors); the downstream
+-- `sessionId IS NOT NULL` filter drops any non-record lines anyway.
 CREATE OR REPLACE TEMP TABLE raw AS
-SELECT CAST(line AS JSON) AS j, filename
-FROM read_csv('{{.CorpusGlob}}',
-              columns={'line': 'VARCHAR'},
-              header=false, delim=e'\x01', quote='', escape='',
-              filename=true, maximum_line_size={{.MaxLineSize}}, ignore_errors=true);
+SELECT json AS j, filename
+FROM read_ndjson_objects('{{.CorpusGlob}}', ignore_errors=true, filename=true);
 
 -- 2) Normalized records with a per-session turn ordering (by timestamp).
 CREATE OR REPLACE TEMP TABLE rec AS

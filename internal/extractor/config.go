@@ -16,9 +16,6 @@ type Config struct {
 	MemoryLimit string // DuckDB memory_limit pragma (e.g. "30GB"); "" = duckdb default
 	Threads     int    // DuckDB threads pragma; 0 = duckdb default
 
-	// Loader
-	MaxLineSize int // duckdb read_csv maximum_line_size (bytes)
-
 	// Window (transcript slice stored per incident)
 	WindowBefore int
 	WindowAfter  int
@@ -69,9 +66,6 @@ func DefaultConfig() Config {
 		Signals:            nil,
 		MemoryLimit:        "8GB",
 		Threads:            0,
-		MaxLineSize:        8388608, // 8 MiB; the longest real transcript line is ~0.5 MiB,
-		// and DuckDB sizes its CSV read buffer (~max_line_size x threads) eagerly,
-		// so an oversized value OOMs on the full corpus regardless of memory_limit.
 		WindowBefore:       3,
 		WindowAfter:        4,
 		ExcerptChars:       300,

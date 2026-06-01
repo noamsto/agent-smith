@@ -225,11 +225,8 @@ type Config struct {
 	Since      string // optional ISO8601 lower bound on record timestamp; "" = all
 	Signals    []string // which detectors to run; empty = all
 
-	// Loader
-	MaxLineSize int // duckdb read_csv maximum_line_size (bytes)
-
-	// DuckDB runtime (prevents OOM on large corpora — duckdb spills to disk at the cap)
-	MemoryLimit string // memory_limit pragma, e.g. "4GB"; "" = duckdb default. Validated before interpolation.
+	// DuckDB runtime (optional safety; loader uses read_ndjson_objects which streams without OOM)
+	MemoryLimit string // memory_limit pragma, e.g. "8GB"; "" = duckdb default. Validated before interpolation.
 	Threads     int    // threads pragma; 0 = omit (duckdb default / all cores)
 
 	// Window (transcript slice stored per incident)
@@ -280,8 +277,7 @@ func DefaultConfig() Config {
 		OutDB:              "incidents.db",
 		Since:              "",
 		Signals:            nil,
-		MaxLineSize:        8388608,   // 8 MiB; longest real transcript line ~0.5 MiB. NB: 128 MiB × threads makes read_csv eagerly reserve 30-44 GB and OOM — small line size is the real fix.
-		MemoryLimit:        "8GB",     // cap; duckdb spills to disk above it
+		MemoryLimit:        "8GB",     // optional safety cap; duckdb spills above it
 		Threads:            0,         // duckdb default (all cores)
 		WindowBefore:       3,
 		WindowAfter:        4,
@@ -302,7 +298,7 @@ func DefaultConfig() Config {
 
 - [ ] **Step 2: Create `internal/extractor/sql/00_base.sql.tmpl`**
 
-> Loads each jsonl line as raw JSON (cast from VARCHAR — this avoids duckdb's struct schema inference, which would silently drop fields like `isSidechain` and coerce timestamps). All later tables read from `rec`. Scalar fields detectors filter on (`file_path`, `rd_offset`, `rd_limit`, `subagent_type`) are projected here as columns — never filtered via JSON operators inside a join (that triggers a duckdb cast error).
+> Loads each jsonl line as a raw JSON value via `read_ndjson_objects` (no struct schema inference, which would otherwise silently drop fields like `isSidechain` and coerce timestamps; it also streams without the `read_csv` `max_line_size × threads` OOM). All later tables read from `rec`. Scalar fields detectors filter on (`file_path`, `rd_offset`, `rd_limit`, `subagent_type`) are projected here as columns — never filtered via JSON operators inside a join (that triggers a duckdb cast error).
 
 ```sql
 -- Durable output table (append across runs; idempotent via PK + ON CONFLICT).
@@ -319,13 +315,13 @@ CREATE TABLE IF NOT EXISTS incidents (
   detail              JSON
 );
 
--- 1) Raw load: one row per jsonl line, parsed as JSON (no schema inference).
+-- 1) Raw load: one row per jsonl line as a raw JSON value (no schema inference).
+-- read_ndjson_objects is the purpose-built reader; unlike read_csv it doesn't
+-- pre-reserve a maximum_line_size x threads buffer, so it streams the corpus
+-- without OOM. Malformed/blank lines skipped; downstream sessionId filter drops the rest.
 CREATE OR REPLACE TEMP TABLE raw AS
-SELECT CAST(line AS JSON) AS j, filename
-FROM read_csv('{{.CorpusGlob}}',
-              columns={'line': 'VARCHAR'},
-              header=false, delim=e'\x01', quote='', escape='',
-              filename=true, maximum_line_size={{.MaxLineSize}}, ignore_errors=true);
+SELECT json AS j, filename
+FROM read_ndjson_objects('{{.CorpusGlob}}', ignore_errors=true, filename=true);
 
 -- 2) Normalized records with a per-session turn ordering (by timestamp).
 CREATE OR REPLACE TEMP TABLE rec AS
@@ -577,7 +573,7 @@ func TestBasePipelineBuildsDerivedTables(t *testing.T) {
 	cfg.Signals = []string{} // base only: render base + all detectors is fine, but
 	// to isolate the base layer we render base and append a probe query.
 	script, err := renderScript(Config{ // base + no detectors
-		CorpusGlob: cfg.CorpusGlob, MaxLineSize: cfg.MaxLineSize,
+		CorpusGlob: cfg.CorpusGlob,
 		ExcerptChars: cfg.ExcerptChars, GlobalClaudeMd: cfg.GlobalClaudeMd,
 		Signals: []string{"inefficiency"}, // include one so file list is valid
 		LargeFileLines: 999999, MediumLines: 500, HighLines: 1000,
@@ -1439,4 +1435,4 @@ These emerged during subagent-driven execution and reviews; the plan above was u
 - **Three-valued logic on `isSidechain`** — `is_sidechain` uses `COALESCE((j->>'isSidechain')='true', false)` so absent fields read as `false` and `NOT is_subagent` filters work.
 - **`orchestrator_disagreement` scoped to main sessions** — added `AND NOT sm.is_subagent`.
 - **`--signals` token hygiene** — trimmed + empty-skipped in `main.go`; `renderScript` also skips empty tokens.
-- **OOM on the real corpus (Task 10)** — the real driver was **`maximum_line_size`**: at 128 MiB, `read_csv` eagerly reserves ~`max_line_size × threads` (≈30-44 GB on 16 cores) and OOMs *regardless of* `memory_limit` (4/8/30/48 GB all failed). Fix: `MaxLineSize` → **8 MiB** (longest real line ~0.5 MiB, 15× margin) — this is the true cure. Also added a defensive `MemoryLimit` (default `"8GB"`, duckdb spills above it) + `Threads` (default 0) with `SET memory_limit/threads` pragmas in `renderScript`, validated via `(?i)^[0-9]+\s?(b|kb|mb|gb|tb)$` before interpolation, exposed as `--memory-limit`/`--threads`. Test configs clear `MemoryLimit` so parallel `go test` doesn't over-reserve. Real-corpus baseline (~7s): ~5030 incidents (retry 2318, tool_error 1664, user_correction 902, inefficiency 146/86 sessions, orchestrator_disagreement 0). **§10 candidates:** (a) `orchestrator_disagreement`=0 suggests its regex/window is too narrow; (b) the 8 MiB `MaxLineSize` silently skips any larger line (`ignore_errors=true`) and should become a tunable flag.
+- **OOM on the real corpus (Task 10), and the loader rewrite that resolved it** — the original `read_csv`-based loader (lines as VARCHAR → `CAST AS JSON`) OOM'd because `read_csv` eagerly reserves a `maximum_line_size × threads` buffer (128 MiB × 16 cores ≈ 30-44 GB, OOMing *regardless of* `memory_limit`). An interim fix dropped `MaxLineSize` to 8 MiB. The **final** fix (post-review, using the duckdb-skills docs) replaced the whole hack with **`read_ndjson_objects(..., ignore_errors=true, filename=true)`** — DuckDB's purpose-built raw-NDJSON reader, which performs no schema inference *and* doesn't pre-reserve line buffers, so it streams the full corpus at default memory. This removed the `MaxLineSize` knob entirely (per-object size now bounded by duckdb's `maximum_object_size`, 16 MiB default). Verified parity: identical detection (inefficiency 146/86 sessions, retry 2318; high-volume signals drift only with live-corpus growth), ~7s. `MemoryLimit`/`Threads` (default `"8GB"`/0, validated via `(?i)^[0-9]+\s?(b|kb|mb|gb|tb)$`, exposed as `--memory-limit`/`--threads`) are retained as optional safety knobs. **§10 candidate:** `orchestrator_disagreement`=0 across the corpus suggests its regex/window is too narrow.
