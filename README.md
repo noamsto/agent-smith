@@ -39,27 +39,31 @@ glitch actually stopped recurring.
 agent-smith runs two intelligence tracks into one mind. One looks *backward* at
 what happened; the other looks *outward* at what's still true.
 
-```
-                     TRACK A · corpus mining                "what did the agents do wrong?"
-  session history ──► extractor (duckdb/jq) ──► incidents ──┐   cheap · deterministic · whole corpus
-  (~hundreds of .jsonl)                                     │
-                                                            ▼
-                                                       ┌─────────┐
-  TRACK B · freshness audit                            │ ANALYST │   clusters glitches,
-  the artifacts ──► claim extractor ──► explorers ─────►│ (Opus)  │   diagnoses the fix,
-  themselves         (tools, flags,     web · docs      │         │   writes the reason
-                      APIs, URLs)       still-true?     └────┬────┘
-                                                            │  proposals + reason logs
-                                                            ▼
-                                                       ┌──────────┐
-                                                       │ APPLIER  │   finds the repo that owns
-                                                       │          │   the artifact → opens a PR there
-                                                       └────┬─────┘
-                                                            ▼
-                                                       ┌──────────┐
-                                                       │ DÉJÀ-VU  │   re-mines later sessions:
-                                                       │          │   did the glitch stop?
-                                                       └──────────┘
+```mermaid
+flowchart TD
+    subgraph A["🔍 TRACK A · corpus mining — what did the agents do wrong?"]
+        direction LR
+        sh["session history<br/>~hundreds of .jsonl"] -->|"duckdb · jq · cheap"| ext["extractor"] --> inc(["incidents"])
+    end
+
+    subgraph B["🌐 TRACK B · freshness audit — is what they claim still true?"]
+        direction LR
+        art["the artifacts<br/>tools · flags · APIs · URLs"] --> claim["claim<br/>extractor"] -->|"web · docs · context7"| exp["explorers"] --> ver(["claim verdicts"])
+    end
+
+    inc --> AN
+    ver --> AN
+
+    AN{{"🧠 ANALYST · Opus<br/>clusters glitches · diagnoses the fix · writes the reason"}}
+    AN -->|"proposals + reason logs"| AP["🤖 APPLIER<br/>finds the repo that owns the artifact → opens a PR there"]
+    AP -->|"after the PR merges"| DV["🕶️ DÉJÀ-VU<br/>re-mines later sessions — did the glitch stop?"]
+
+    classDef track fill:#0d1117,stroke:#30363d,color:#8b949e;
+    classDef node fill:#0d1117,stroke:#00ff41,color:#c9d1d9;
+    classDef brain fill:#0d2818,stroke:#00ff41,color:#00ff41;
+    class sh,ext,inc,art,claim,exp,ver,AP,DV node;
+    class AN brain;
+    class A,B track;
 ```
 
 **Track A — corpus mining.** Pure SQL and `jq` over your `.jsonl` session logs.
