@@ -57,7 +57,7 @@ var signalFile = map[string]string{
 
 // DefaultConfig returns production defaults, resolving paths under $HOME.
 func DefaultConfig() Config {
-	home, _ := os.UserHomeDir()
+	home, _ := os.UserHomeDir() // error ignored: home becomes "" on failure
 	return Config{
 		CorpusGlob:         filepath.Join(home, ".claude", "projects", "**", "*.jsonl"),
 		OutDB:              "incidents.db",

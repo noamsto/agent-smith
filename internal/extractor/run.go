@@ -16,6 +16,7 @@ import (
 //go:embed sql/*.sql.tmpl
 var sqlFS embed.FS
 
+// duckDBBin is the duckdb executable; overridable for tests/packaging.
 func duckDBBin() string {
 	if b := os.Getenv("AGENT_SMITH_DUCKDB"); b != "" {
 		return b
@@ -23,6 +24,7 @@ func duckDBBin() string {
 	return "duckdb"
 }
 
+// runDuckDB pipes a SQL script to the duckdb CLI over stdin and returns stdout.
 func runDuckDB(ctx context.Context, db, script string) (string, error) {
 	cmd := exec.CommandContext(ctx, duckDBBin(), db)
 	cmd.Stdin = strings.NewReader(script)
