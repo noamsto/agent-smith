@@ -79,3 +79,18 @@ func TestWriteProposalsAndReasonLogs(t *testing.T) {
 		t.Errorf("append-only violated: existing reason-log was overwritten")
 	}
 }
+
+func TestLoadProposalsToleratesCodeFences(t *testing.T) {
+	dir := t.TempDir()
+	fenced := "```json\n" + `{"id":"glitch-fenced","implicated_artifact":"/g/CLAUDE.md#x",
+	  "fix_type":"strengthen","evidence":["s1:1","s2:1","s3:1"],"diagnosis":"d",
+	  "proposed_change":"c","confidence":"high","reason_log":"r"}` + "\n```\n"
+	writeJSON(t, filepath.Join(dir, "p.json"), fenced)
+	props, errs := LoadProposals(dir)
+	if len(errs) != 0 {
+		t.Fatalf("expected fenced JSON to parse, got errors: %v", errs)
+	}
+	if len(props) != 1 || props[0].ID != "glitch-fenced" {
+		t.Fatalf("expected 1 proposal glitch-fenced, got %+v", props)
+	}
+}
