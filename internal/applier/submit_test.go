@@ -184,3 +184,14 @@ func TestCommitMessageFallback(t *testing.T) {
 		t.Errorf("body missing provenance:\n%s", body)
 	}
 }
+
+func TestParseEditorResultToleratesFences(t *testing.T) {
+	fenced := "```json\n{\"applied\":true,\"files_changed\":[\"CLAUDE.md\"],\"summary\":\"s\",\"reason\":\"\"}\n```"
+	ed, err := ParseEditorResult([]byte(fenced))
+	if err != nil {
+		t.Fatalf("ParseEditorResult: %v", err)
+	}
+	if !ed.Applied || ed.Summary != "s" {
+		t.Errorf("got %+v", ed)
+	}
+}

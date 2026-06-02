@@ -168,11 +168,11 @@ func loadEditorResult(path string) (applier.EditorResult, error) {
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return applier.EditorResult{}, err
+		return applier.EditorResult{}, fmt.Errorf("read editor-result %s: %w", path, err)
 	}
-	var ed applier.EditorResult
-	if err := json.Unmarshal(data, &ed); err != nil {
-		return applier.EditorResult{}, err
+	ed, err := applier.ParseEditorResult(data)
+	if err != nil {
+		return applier.EditorResult{}, fmt.Errorf("parse editor-result %s: %w", path, err)
 	}
 	return ed, nil
 }

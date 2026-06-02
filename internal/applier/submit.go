@@ -1,12 +1,21 @@
 package applier
 
 import (
+	_ "embed"
+	"encoding/json"
 	"fmt"
 	"os/exec"
 	"strings"
 
 	"github.com/noamsto/agent-smith/internal/analyst"
 )
+
+//go:embed editor.md
+var editorMD string
+
+// EditorPrompt returns the Editor subagent prompt (the proposal → edit contract),
+// for inlining into a dispatch by the runbook/orchestrator.
+func EditorPrompt() string { return editorMD }
 
 // runner runs a command in dir and returns combined output. Injected so tests run
 // offline against a fake.
@@ -31,6 +40,17 @@ type EditorResult struct {
 	FilesChanged []string `json:"files_changed"`
 	Summary      string   `json:"summary"`
 	Reason       string   `json:"reason"`
+}
+
+// ParseEditorResult decodes an editor subagent's JSON result, tolerating a
+// surrounding markdown code fence (the same leniency the analyst applies to the
+// Oracle's output).
+func ParseEditorResult(data []byte) (EditorResult, error) {
+	var ed EditorResult
+	if err := json.Unmarshal(analyst.StripCodeFence(data), &ed); err != nil {
+		return EditorResult{}, err
+	}
+	return ed, nil
 }
 
 func firstLine(s string) string {

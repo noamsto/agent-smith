@@ -44,9 +44,9 @@ func slugify(s string) string {
 	return strings.Trim(s, "-")
 }
 
-// stripCodeFence removes an optional surrounding markdown code fence
+// StripCodeFence removes an optional surrounding markdown code fence
 // (```json … ``` or ``` … ```) that LLMs commonly wrap JSON output in.
-func stripCodeFence(b []byte) []byte {
+func StripCodeFence(b []byte) []byte {
 	s := strings.TrimSpace(string(b))
 	if !strings.HasPrefix(s, "```") {
 		return b
@@ -105,7 +105,7 @@ func LoadProposals(dir string) ([]Proposal, []error) {
 			continue
 		}
 		var prop Proposal
-		if err := json.Unmarshal(stripCodeFence(data), &prop); err != nil {
+		if err := json.Unmarshal(StripCodeFence(data), &prop); err != nil {
 			errs = append(errs, fmt.Errorf("%s: invalid JSON: %w", p, err))
 			continue
 		}
