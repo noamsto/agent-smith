@@ -15,12 +15,14 @@
           version = "0.1.0";
           src = ./.;
           vendorHash = null; # stdlib only
-          subPackages = [ "cmd/extractor" ];
+          subPackages = [ "cmd/extractor" "cmd/analyst" ];
           nativeBuildInputs = [ pkgs.makeWrapper ];
           nativeCheckInputs = [ pkgs.duckdb ]; # tests shell out to duckdb
           postInstall = ''
-            wrapProgram $out/bin/extractor \
-              --prefix PATH : ${pkgs.duckdb}/bin
+            for b in extractor analyst; do
+              wrapProgram $out/bin/$b \
+                --prefix PATH : ${pkgs.duckdb}/bin
+            done
           '';
         };
 
