@@ -1,6 +1,7 @@
 package analyst
 
 import (
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
@@ -10,6 +11,13 @@ import (
 	"sort"
 	"strings"
 )
+
+//go:embed oracle.md
+var oracleMD string
+
+// OraclePrompt returns the Oracle subagent prompt (the cluster → proposal-JSON
+// contract), for inlining into a dispatch by the orchestrator/eval.
+func OraclePrompt() string { return oracleMD }
 
 // Proposal is one improvement the Oracle proposes for one cluster.
 type Proposal struct {
