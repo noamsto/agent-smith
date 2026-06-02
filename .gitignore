@@ -2,7 +2,12 @@
 incidents.db
 *.duckdb
 proposals.json
+apply-plan.json
+editor-result.json
 corpus/
+
+# git worktrees (worktrunk)
+.worktrees/
 
 # Nix
 result
