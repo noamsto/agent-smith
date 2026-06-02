@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 )
 
 // Cluster is one actionable group: incidents sharing a candidate artifact and a
@@ -68,4 +69,39 @@ func clusterRows(ctx context.Context, db string, minSessions int) ([]clusterRow,
 		return nil, fmt.Errorf("decode cluster rows: %w\noutput: %s", err, out)
 	}
 	return rows, nil
+}
+
+// ClusterDB runs the clustering query, then reads each implicated artifact's
+// current content from disk, returning fully-populated clusters.
+func ClusterDB(ctx context.Context, db string, minSessions int) ([]Cluster, error) {
+	rows, err := clusterRows(ctx, db, minSessions)
+	if err != nil {
+		return nil, err
+	}
+	clusters := make([]Cluster, 0, len(rows))
+	for _, r := range rows {
+		c := Cluster{
+			ClusterID:        r.SignalType + "::" + r.Artifact,
+			SignalType:       r.SignalType,
+			Artifact:         r.Artifact,
+			DistinctSessions: r.DistinctSessions,
+			Incidents:        r.Incidents,
+		}
+		if data, err := os.ReadFile(r.Artifact); err == nil {
+			s := string(data)
+			c.ArtifactContent = &s
+			c.ArtifactExists = true
+		}
+		clusters = append(clusters, c)
+	}
+	return clusters, nil
+}
+
+// WriteClusters marshals clusters to outPath as indented JSON.
+func WriteClusters(clusters []Cluster, outPath string) error {
+	data, err := json.MarshalIndent(clusters, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(outPath, append(data, '\n'), 0o644)
 }

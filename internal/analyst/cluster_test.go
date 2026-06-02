@@ -2,7 +2,9 @@ package analyst
 
 import (
 	"context"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -56,5 +58,52 @@ func TestClusterExplodesAndGates(t *testing.T) {
 	}
 	if string(r.Incidents) == "" || string(r.Incidents) == "null" {
 		t.Errorf("expected member incidents JSON, got %q", r.Incidents)
+	}
+}
+
+func TestClusterDBBundlesArtifactContent(t *testing.T) {
+	// Real artifact file on disk for the cluster's artifact path.
+	dir := t.TempDir()
+	artifact := filepath.Join(dir, "CLAUDE.md")
+	if err := os.WriteFile(artifact, []byte("# Reading Code (skeleton-first)\nDon't read whole files.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	missing := filepath.Join(dir, "gone", "CLAUDE.md")
+
+	ins := `INSERT INTO incidents VALUES
+	 (md5('i1'),'s1','/p','2026-05-01T10:00:00Z','inefficiency','` + artifact + `',
+	   '["` + artifact + `","` + missing + `"]'::JSON,'[{"turn":1}]'::JSON,'high','{"file_path":"a.go"}'::JSON),
+	 (md5('i2'),'s2','/p','2026-05-01T11:00:00Z','inefficiency','` + artifact + `',
+	   '["` + artifact + `","` + missing + `"]'::JSON,'[]'::JSON,'high','{}'::JSON),
+	 (md5('i3'),'s3','/p','2026-05-01T12:00:00Z','inefficiency','` + artifact + `',
+	   '["` + artifact + `","` + missing + `"]'::JSON,'[]'::JSON,'high','{}'::JSON);`
+	db := makeIncidentsDB(t, ins)
+
+	clusters, err := ClusterDB(context.Background(), db, 3)
+	if err != nil {
+		t.Fatalf("ClusterDB: %v", err)
+	}
+	var got *Cluster
+	for i := range clusters {
+		if clusters[i].Artifact == artifact {
+			got = &clusters[i]
+		}
+	}
+	if got == nil {
+		t.Fatalf("expected a cluster for %s; got %+v", artifact, clusters)
+	}
+	if got.ClusterID != "inefficiency::"+artifact {
+		t.Errorf("cluster_id = %q", got.ClusterID)
+	}
+	if !got.ArtifactExists || got.ArtifactContent == nil ||
+		!strings.Contains(*got.ArtifactContent, "skeleton-first") {
+		t.Errorf("expected bundled artifact content with the rule, got exists=%v content=%v",
+			got.ArtifactExists, got.ArtifactContent)
+	}
+	// The missing-file candidate also forms a >=3 cluster but with no content.
+	for i := range clusters {
+		if clusters[i].Artifact == missing && (clusters[i].ArtifactExists || clusters[i].ArtifactContent != nil) {
+			t.Errorf("missing artifact should have exists=false, content=nil")
+		}
 	}
 }
