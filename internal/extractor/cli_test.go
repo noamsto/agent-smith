@@ -8,6 +8,22 @@ import (
 	"testing"
 )
 
+func TestGlobalClaudeMdFlowsToCandidates(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.CorpusGlob = filepath.Join("..", "..", "fixtures", "skeleton-first", "*.jsonl")
+	cfg.OutDB = filepath.Join(t.TempDir(), "incidents.db")
+	cfg.Signals = []string{"inefficiency"}
+	cfg.GlobalClaudeMd = "/sentinel/CLAUDE.md"
+	if err := Run(context.Background(), cfg); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	rows := query(t, cfg.OutDB,
+		"SELECT count(*) AS n FROM incidents WHERE signal_type='inefficiency' AND candidates::VARCHAR LIKE '%/sentinel/CLAUDE.md%';")
+	if jsonCount(t, rows[0]["n"]) < 1 {
+		t.Fatalf("expected the configured global CLAUDE.md in candidates, rows=%v", rows)
+	}
+}
+
 // TestEndToEndAllSignals runs every detector over a combined fixture corpus and
 // asserts incidents appear across multiple signal types.
 func TestEndToEndAllSignals(t *testing.T) {

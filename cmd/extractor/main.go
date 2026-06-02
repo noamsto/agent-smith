@@ -20,6 +20,7 @@ func main() {
 	flag.StringVar(&signals, "signals", "", "comma-separated signals (default: all)")
 	flag.StringVar(&cfg.MemoryLimit, "memory-limit", cfg.MemoryLimit, "DuckDB memory_limit pragma (e.g. 4GB)")
 	flag.IntVar(&cfg.Threads, "threads", cfg.Threads, "DuckDB threads pragma (0 = duckdb default / all cores)")
+	flag.StringVar(&cfg.GlobalClaudeMd, "global-claude-md", cfg.GlobalClaudeMd, "path used as the global CLAUDE.md candidate for main-session incidents")
 	flag.Parse()
 
 	for _, s := range strings.Split(signals, ",") {
