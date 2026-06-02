@@ -1,0 +1,2 @@
+{"type":"assistant","sessionId":"as-1","uuid":"a1","timestamp":"2026-05-20T10:00:00Z","cwd":"/home/noams/projA","message":{"role":"assistant","content":[{"type":"tool_use","id":"r1","name":"Read","input":{"file_path":"/home/noams/projA/big.go"}}]}}
+{"type":"user","sessionId":"as-1","uuid":"u1","timestamp":"2026-05-20T10:00:01Z","cwd":"/home/noams/projA","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"r1","is_error":false,"content":"..."}]},"toolUseResult":{"type":"text","file":{"filePath":"/home/noams/projA/big.go","totalLines":1400}}}
