@@ -252,3 +252,28 @@ Go as the thin orchestrator; stdlib-only for `assemble`.
 - **Cross-cluster themes:** pure-SQL clustering can't spot a glitch that spans
   *different* artifacts/signals; if that proves valuable, a later optional LLM
   pass could merge related clusters (the brainstorm's "hybrid" option).
+
+- **Decoupling from Claude Code (future) — and the Phase-1 guardrail.** Two kinds
+  of coupling must not be confused:
+  - *Domain* coupling is inherent and intended: agent-smith improves Claude Code
+    instruction artifacts and may propose Claude Code hooks. Not a target for
+    decoupling — it's the product.
+  - *Runtime* coupling is decouplable: in Phase 1 the diagnosis step runs as a
+    Claude Code subagent inside a CC session, which prevents headless (cron/CI)
+    runs and locks the LLM to whatever the session uses.
+
+  The architecture already isolates the runtime coupling to **one swappable stage**.
+  The diagnosis step is a pure function `cluster → proposal JSON`; its contract is
+  files (`clusters.json` in, proposal JSON out) and a **provider-neutral prompt**
+  (`oracle.md` is plain text + a JSON output schema). So a future **decoupled mode**
+  is a drop-in alternative runner — e.g. a Go `analyst diagnose` subcommand that
+  calls an LLM API per cluster — behind the *identical* contract; the binaries and
+  schemas don't change.
+
+  **Phase-1 guardrail (enforced now so the seam stays clean):** keep CC-isms out of
+  the `clusters.json`/proposal schemas and out of `oracle.md`. The prompt may
+  reference Claude Code concepts as *subject matter* (it diagnoses CC artifacts and
+  can propose CC hooks), but must not assume a CC runtime, CC-only tools, or session
+  internals to *produce its output*. We do **not** build the API runner now (we
+  deliberately chose CC subagents — no API-key/billing surface); we only keep the
+  contract swap-ready.
