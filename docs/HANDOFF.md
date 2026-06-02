@@ -1,71 +1,76 @@
 # Handoff — agent-smith
 
-> For a fresh Claude Code session started inside this repo. Read this, then the spec.
+> For a fresh Claude Code session started inside this repo. Read this first, then
+> the relevant spec/plan/doc for whatever you're picking up.
 
-## Where things stand (2026-06-01)
+## Where things stand (updated 2026-06-01)
 
-- **Repo:** `github.com/noamsto/agent-smith` (public). Local: `~/Data/git/noamsto/agent-smith`.
-- **Design:** complete & approved via a brainstorm. Lives in
-  [`docs/specs/2026-06-01-agent-smith-design.md`](specs/2026-06-01-agent-smith-design.md). **Read it first.**
-- **README:** written (Matrix-themed, Mermaid pipeline diagram, badges).
-- **Code:** none yet. Nothing under `extractor/`, `freshness/`, `analyst/`, `applier/` exists.
-- **Next step:** turn the **Phase 1 (MVP)** spec into an implementation plan
-  (use the `superpowers:writing-plans` skill), then build.
+- **Repo:** `github.com/noamsto/agent-smith` (public). Local: `~/Data/git/noamsto/agent-smith`. Default branch `main`.
+- **Design:** approved. Top-level design: [`docs/specs/2026-06-01-agent-smith-design.md`](specs/2026-06-01-agent-smith-design.md).
+- **Built & merged to `main`:**
+  - **Extractor (Track A)** — `cmd/extractor` + `internal/extractor`. Usage: [`docs/extractor.md`](extractor.md).
+  - **Analyst** — `cmd/analyst` + `internal/analyst` (the `cluster` + `assemble` binaries and the **Oracle** prompt). Spec: [`docs/superpowers/specs/2026-06-01-analyst-design.md`]. Plan: [`docs/superpowers/plans/2026-06-01-analyst.md`]. Usage: [`docs/analyst.md`](analyst.md).
+- **Acceptance bar (skeleton-first) — MET end-to-end:** extractor flags whole-file large Reads as `inefficiency`; `analyst cluster` traces them (via candidate explosion) to the global `CLAUDE.md`; the Oracle chose `strengthen` (not duplicate `add`) in a real golden-eval run → `assemble` wrote the proposal + reason-log.
+- **Next:** the **Applier** (consumes `proposals.json` → cross-repo PR, closing the loop) and/or **Track B** (freshness audit). Plus the `/agent-smith` orchestration command (built with the applier).
 
 ## What agent-smith is (one paragraph)
 
 A meta-agent that improves the instruction artifacts steering Claude Code agents
 (subagent `.md`, skills, `CLAUDE.md`, slash commands). **Two tracks feed one
 analyst feed one cross-repo applier.** Track A mines `~/.claude/projects/**/*.jsonl`
-session history with duckdb/jq for behavioral *glitches* (errors, corrections,
-inefficiency, orchestrator-overrules-subagent). Track B audits the artifacts'
-*external claims* (tool/flag/API/URL freshness) by fanning out explorer agents
-(WebSearch/WebFetch/context7). The analyst (Opus) clusters, applies a ≥3-session
-threshold, diagnoses a `fix_type`, and emits proposals + reason logs. The applier
-opens a PR against whichever repo owns the artifact. `deja-vu` later re-mines to
-confirm the glitch rate dropped.
+session history with duckdb for behavioral *glitches*. Track B (not built yet)
+audits the artifacts' *external claims* for freshness. The analyst clusters
+incidents, applies a ≥3-session threshold, diagnoses a `fix_type`, and emits
+proposals + reason logs. The applier (not built yet) opens a PR against whichever
+repo owns the artifact. `deja-vu` (Phase 2) re-mines to confirm the glitch dropped.
 
-## Phase 1 scope (what to build first)
+## Phase 1 status
 
-1. **Extractor** (`extractor/`, no LLM) — duckdb/jq over the jsonl corpus →
-   `incidents.db`. Five signal detectors, one module each under `extractor/signals/`.
-   `implicated_artifact` resolution. See spec §4.
-2. **Freshness** (`freshness/`) — claim extraction from artifacts + explorer fan-out
-   → verdicts. See spec §5.
-3. **Analyst** (`analyst/`) — sensei subagent prompt + cluster/diagnose → proposals.
-   See spec §6 (incl. the fix-type taxonomy).
-4. **Applier** (`applier/`) — proposals → cross-repo edits + `gh pr create`
-   (gated, Phase 1). Reason logs into `reason-log/`. See spec §7.
+| Unit | Status | Where |
+|------|--------|-------|
+| Extractor (Track A) | ✅ on `main` | `cmd/extractor`, `internal/extractor`, `docs/extractor.md` |
+| Analyst | ✅ on `main` | `cmd/analyst`, `internal/analyst`, `docs/analyst.md` |
+| Track B — Freshness audit | ⬜ not started | spec §5 |
+| Applier (proposals → PR) | ⬜ not started | spec §7 |
+| `/agent-smith` command (orchestration) | ⬜ deferred | build with the applier |
 
-**Acceptance bar (the canonical fixture):** the *skeleton-first whole-file-read*
-glitch. The global `CLAUDE.md` already has a "Reading Code (skeleton-first)" rule,
-yet agents read whole large files. Extractor must flag those as `inefficiency`
-incidents; analyst must trace them to the *existing* rule and choose `strengthen`
-(or `escalate-out-of-instructions` → a hook), **not** a duplicate `add`. Build this
-as a fixture under `fixtures/`. See spec §9.
+## How to build / test / run
 
-## Key decisions already locked
+```bash
+nix develop                       # devshell: go, duckdb, jq, gopls
+go test ./...                     # all tests (extractor + analyst)
+go build ./...                    # both binaries
+nix build .#default               # packaged, duckdb-wrapped binaries (result/bin/{extractor,analyst})
 
-- Output: Phase 1 = PR-gated. Phase 2 = autonomous loop (auto-commit nix-config
-  artifacts only; **never** auto-commit to factify/work repos).
-- Validation: reason-log + trend (`deja-vu`), deferred to Phase 2.
-- Cross-repo PRs honor branch-naming rules (Linear naming for factify-inc repos).
-- agent-smith may propose **hooks**, not just prose (`escalate-out-of-instructions`).
-- `incidents.db`, `proposals.json`, `corpus/` are machine-local (already gitignored).
-- Reason logs live in THIS repo (`reason-log/`), not the target repos.
+# Track A end-to-end:
+go run ./cmd/extractor --out incidents.db                  # mine the corpus
+go run ./cmd/analyst cluster --db incidents.db --out clusters.json
+#   → dispatch the Oracle (internal/analyst/oracle.md) per cluster → proposal JSONs
+go run ./cmd/analyst assemble --proposals-dir proposals --out proposals.json --reason-log-dir reason-log
+```
 
-## Environment notes
+Analyst golden-eval runbook (the on-demand Oracle acceptance check): `fixtures/analyst/RUNBOOK.md`.
 
-- Corpus to mine: `~/.claude/projects/**/*.jsonl` (~929 files, ~463MB at design time).
-- jsonl line types seen: `assistant`, `user`, `system`, `attachment`, `last-prompt`,
-  `permission-mode`, `pr-link`, `ai-title`, `queue-operation`, `file-history-snapshot`.
-  Errors: `user.message.content[].tool_result.is_error == true`.
-  Subagents: `assistant` tool_use `name == "Task"`, `.input.subagent_type`.
-- nix-config (the main consumer) is at `~/nix-config`; agents live in
-  `home/ai/claude-code/agents/`, skills in `home/ai/claude-code/skills/`.
-- Still need: `flake.nix` (devshell: duckdb, jq, nodejs), repo scaffolding dirs.
+## Key decisions locked (this matters for the next unit)
 
-## First move for the new session
+- **Tech:** Go thin-orchestrator + **detector/SQL logic run via the `duckdb` CLI** (no CGO duckdb driver). stdlib-only Go. Nix flake (`buildGoModule`, `vendorHash=null`, binaries wrapped with duckdb on PATH).
+- **Corpus loader:** `read_ndjson_objects(...)` (raw JSON per line, no schema inference) — NOT `read_csv`/`read_json`. Streams the corpus without OOM.
+- **LLM pieces = Claude Code subagents, not the Anthropic API.** The Oracle is a **pure `prompt → JSON` completion** (inputs inlined, no tool use) so it's harness/provider-neutral; only the *dispatch* is CC-specific. Decoupling-from-Claude = a corpus adapter (Track A) + a domain mapping (artifacts), NOT the Oracle — see `docs/extractor.md` §Deferred signals and the analyst spec §9.
+- **Output:** Phase 1 = PR-gated. `proposals.json` is machine-local (gitignored); **`reason-log/` is committed to THIS repo** (append-only; applier appends PR link, deja-vu appends outcome).
+- **agent-smith may propose hooks** (`escalate-out-of-instructions`), not just prose.
+- **`orchestrator_disagreement` was removed from the Phase-1 extractor** (deferred): it's a semantic judgment with no cheap structural anchor on this async-fan-out corpus. Phase-2 path = attribute a subagent's *own* sidechain glitches to its `.md` + analyst-judged async correlation. See `docs/extractor.md` §Deferred signals.
 
-Read the spec, then invoke `superpowers:writing-plans` to produce a Phase 1
-implementation plan. Do **not** start coding before the plan exists.
+## Environment / corpus notes (verified, not assumptions)
+
+- Corpus: `~/.claude/projects/**/*.jsonl`, ~203k records, **live (grows every session)** — counts drift run-to-run.
+- **Subagents spawn via the `Agent` tool** in this environment (input `.subagent_type`), NOT `Task` (the original spec §4 said `Task`; the corpus has 0 `Task` uses, 637 `Agent`). Code matches `Agent`/`Task`.
+- Extractor signals (4, all structural): `inefficiency`, `tool_error`, `retry`, `user_correction`. `repeated_guidance` is analyst-side.
+- `incidents` schema: `incident_id` (md5 `session:turn:signal`, PK, idempotent), `session_id`, `project`, `ts`, `signal_type`, `implicated_artifact`, `candidates` (JSON array), `"window"` (JSON; quoted — reserved word), `confidence`, `detail` (JSON).
+- nix-config (the main consumer) is at `~/nix-config`; agents in `home/ai/claude-code/agents/`, skills in `home/ai/claude-code/skills/`.
+
+## First move for a new session
+
+Pick the next unit (**Applier** is the natural one — it consumes the analyst's
+`proposals.json` and completes the extractor→analyst→applier loop). Brainstorm it
+(`superpowers:brainstorming`) → spec → `superpowers:writing-plans` → build via
+`superpowers:subagent-driven-development`. Do **not** code before the plan exists.
