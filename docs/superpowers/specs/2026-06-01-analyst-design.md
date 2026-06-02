@@ -253,27 +253,32 @@ Go as the thin orchestrator; stdlib-only for `assemble`.
   *different* artifacts/signals; if that proves valuable, a later optional LLM
   pass could merge related clusters (the brainstorm's "hybrid" option).
 
-- **Decoupling from Claude Code (future) — and the Phase-1 guardrail.** Two kinds
-  of coupling must not be confused:
-  - *Domain* coupling is inherent and intended: agent-smith improves Claude Code
-    instruction artifacts and may propose Claude Code hooks. Not a target for
-    decoupling — it's the product.
-  - *Runtime* coupling is decouplable: in Phase 1 the diagnosis step runs as a
-    Claude Code subagent inside a CC session, which prevents headless (cron/CI)
-    runs and locks the LLM to whatever the session uses.
+- **Decoupling from Claude Code (future) — and the Phase-1 guardrail.** Coupling
+  is three layers, and only the thinnest is Claude-specific:
+  - **Domain** — agent-smith improves Claude Code instruction artifacts and may
+    propose Claude Code hooks. Inherent and intended; *not* a decoupling target —
+    it's the product.
+  - **Dispatch** — *how* the diagnosis call is issued. Phase 1 uses Claude Code's
+    `Agent` tool, but "subagent dispatch" is a **cross-harness primitive** (Claude
+    Code, the Claude Agent SDK, Cursor, OpenAI's Agents SDK all have it), so this is
+    not Claude-only — it's thin glue behind the files contract.
+  - **Provider** — which LLM answers. The contract carries none of this; `oracle.md`
+    is a provider-neutral prompt.
 
-  The architecture already isolates the runtime coupling to **one swappable stage**.
-  The diagnosis step is a pure function `cluster → proposal JSON`; its contract is
-  files (`clusters.json` in, proposal JSON out) and a **provider-neutral prompt**
-  (`oracle.md` is plain text + a JSON output schema). So a future **decoupled mode**
-  is a drop-in alternative runner — e.g. a Go `analyst diagnose` subcommand that
-  calls an LLM API per cluster — behind the *identical* contract; the binaries and
-  schemas don't change.
+  The key enabler: by the "pre-include artifact content, no tool use" decision (§4–§5),
+  **the Oracle is a pure `prompt → JSON` completion, not a load-bearing subagent.**
+  Its portability floor is just "an LLM that returns structured output." It is
+  *dispatched* as a CC subagent today, but would run identically as a Claude Agent
+  SDK sub-agent, another harness's subagent, or a plain API call — all behind the
+  *identical* `clusters.json → proposal JSON` contract. A future **decoupled mode**
+  is therefore a drop-in runner (e.g. a Go `analyst diagnose` subcommand calling an
+  LLM API per cluster); the binaries and schemas don't change.
 
-  **Phase-1 guardrail (enforced now so the seam stays clean):** keep CC-isms out of
-  the `clusters.json`/proposal schemas and out of `oracle.md`. The prompt may
-  reference Claude Code concepts as *subject matter* (it diagnoses CC artifacts and
-  can propose CC hooks), but must not assume a CC runtime, CC-only tools, or session
-  internals to *produce its output*. We do **not** build the API runner now (we
-  deliberately chose CC subagents — no API-key/billing surface); we only keep the
-  contract swap-ready.
+  **Phase-1 guardrail (enforced now so the seam stays clean):** the Oracle must
+  remain expressible as a plain `prompt → JSON` completion — no reliance on
+  tool-calling, file reads, or harness-specific subagent features to *produce its
+  output*. `oracle.md` and the `clusters.json`/proposal schemas may reference Claude
+  Code concepts as *subject matter* (diagnosing CC artifacts, proposing CC hooks)
+  but must not assume a CC runtime to run. We do **not** build the API runner now
+  (we deliberately chose subagent dispatch — no API-key/billing surface); we only
+  keep the contract swap-ready.
