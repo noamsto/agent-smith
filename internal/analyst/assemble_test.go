@@ -22,9 +22,9 @@ func TestLoadProposalsValidatesDedupsAndRejects(t *testing.T) {
 	  "diagnosis":"rule ignored","proposed_change":"make imperative","confidence":"high",
 	  "reason_log":"expected fewer whole-file reads"}`
 	writeJSON(t, filepath.Join(dir, "a.json"), good)
-	writeJSON(t, filepath.Join(dir, "b.json"), good)              // duplicate id → deduped
-	writeJSON(t, filepath.Join(dir, "c.json"), `{"id":"x"}`)      // invalid → rejected
-	writeJSON(t, filepath.Join(dir, "d.json"), `{not json`)       // malformed → rejected
+	writeJSON(t, filepath.Join(dir, "b.json"), good)         // duplicate id → deduped
+	writeJSON(t, filepath.Join(dir, "c.json"), `{"id":"x"}`) // invalid → rejected
+	writeJSON(t, filepath.Join(dir, "d.json"), `{not json`)  // malformed → rejected
 
 	props, errs := LoadProposals(dir)
 	if len(props) != 1 {
