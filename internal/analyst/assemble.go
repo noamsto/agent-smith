@@ -3,6 +3,7 @@ package analyst
 import (
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -33,6 +34,12 @@ var slugRe = regexp.MustCompile(`[^a-z0-9]+`)
 func slugify(s string) string {
 	s = slugRe.ReplaceAllString(strings.ToLower(s), "-")
 	return strings.Trim(s, "-")
+}
+
+func fnv32a(s string) uint32 {
+	h := fnv.New32a()
+	h.Write([]byte(s))
+	return h.Sum32()
 }
 
 // Validate checks a proposal has all required fields and valid enums.
@@ -110,10 +117,12 @@ func WriteReasonLogs(props []Proposal, dir, date string) (int, error) {
 	}
 	written := 0
 	for _, p := range props {
-		path := filepath.Join(dir, date+"-"+slugify(p.ID)+".md")
-		if _, err := os.Stat(path); err == nil {
-			continue // append-only: never overwrite an existing entry
+		slug := slugify(p.ID)
+		if slug == "" { // non-ASCII/empty id → deterministic distinct fallback
+			slug = fmt.Sprintf("%08x", fnv32a(p.ID))
 		}
+		path := filepath.Join(dir, date+"-"+slug+".md")
+
 		var b strings.Builder
 		fmt.Fprintf(&b, "# %s\n\n", p.ID)
 		fmt.Fprintf(&b, "**Artifact:** %s  \n", p.ImplicatedArtifact)
@@ -126,7 +135,20 @@ func WriteReasonLogs(props []Proposal, dir, date string) (int, error) {
 		fmt.Fprintf(&b, "\n## Proposed change\n\n```\n%s\n```\n\n", p.ProposedChange)
 		fmt.Fprintf(&b, "## Expected effect\n\n%s\n\n", p.ReasonLog)
 		fmt.Fprintf(&b, "<!-- PR link appended by the applier; outcome appended by deja-vu -->\n")
-		if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
+
+		// O_EXCL makes append-only atomic: refuse to clobber an existing entry.
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+		if err != nil {
+			if os.IsExist(err) {
+				continue
+			}
+			return written, err
+		}
+		if _, err := f.WriteString(b.String()); err != nil {
+			f.Close()
+			return written, err
+		}
+		if err := f.Close(); err != nil {
 			return written, err
 		}
 		written++

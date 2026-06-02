@@ -66,9 +66,16 @@ func TestWriteProposalsAndReasonLogs(t *testing.T) {
 		!strings.Contains(string(entry), "## Diagnosis") {
 		t.Errorf("reason-log missing content:\n%s", entry)
 	}
-	// Idempotent: a second run writes 0 new files.
-	n2, _ := WriteReasonLogs(props, rlDir, "2026-06-01")
+	// Append-only: a second run must NOT overwrite an existing entry, even if the
+	// proposal content changed.
+	mutated := []Proposal{props[0]}
+	mutated[0].ProposedChange = "SHOULD NOT APPEAR"
+	n2, _ := WriteReasonLogs(mutated, rlDir, "2026-06-01")
 	if n2 != 0 {
 		t.Errorf("expected append-only (0 new), got %d", n2)
+	}
+	again, _ := os.ReadFile(filepath.Join(rlDir, "2026-06-01-glitch-skeleton.md"))
+	if strings.Contains(string(again), "SHOULD NOT APPEAR") {
+		t.Errorf("append-only violated: existing reason-log was overwritten")
 	}
 }

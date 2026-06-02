@@ -51,7 +51,7 @@ func runAssemble(args []string) {
 	out := fs.String("out", "proposals.json", "output proposals file")
 	reasonLog := fs.String("reason-log-dir", "reason-log", "append-only reason-log directory")
 	date := fs.String("date", "", "ISO date for reason-log filenames (default: today)")
-	fs.Parse(args)
+	_ = fs.Parse(args)
 
 	d := *date
 	if d == "" {
