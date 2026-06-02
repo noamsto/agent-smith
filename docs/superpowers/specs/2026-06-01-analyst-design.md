@@ -253,32 +253,40 @@ Go as the thin orchestrator; stdlib-only for `assemble`.
   *different* artifacts/signals; if that proves valuable, a later optional LLM
   pass could merge related clusters (the brainstorm's "hybrid" option).
 
-- **Decoupling from Claude Code (future) — and the Phase-1 guardrail.** Coupling
-  is three layers, and only the thinnest is Claude-specific:
-  - **Domain** — agent-smith improves Claude Code instruction artifacts and may
-    propose Claude Code hooks. Inherent and intended; *not* a decoupling target —
-    it's the product.
-  - **Dispatch** — *how* the diagnosis call is issued. Phase 1 uses Claude Code's
-    `Agent` tool, but "subagent dispatch" is a **cross-harness primitive** (Claude
-    Code, the Claude Agent SDK, Cursor, OpenAI's Agents SDK all have it), so this is
-    not Claude-only — it's thin glue behind the files contract.
-  - **Provider** — which LLM answers. The contract carries none of this; `oracle.md`
-    is a provider-neutral prompt.
+- **Running on another harness (future) — what actually binds.** "Decouple from
+  Claude" is mostly *not* about the LLM/subagent — it's about the two *ends* of the
+  pipeline. For a user on OpenCode, Cursor, the Claude Agent SDK, or any other agent
+  harness, three seams matter, in descending order of effort:
 
-  The key enabler: by the "pre-include artifact content, no tool use" decision (§4–§5),
-  **the Oracle is a pure `prompt → JSON` completion, not a load-bearing subagent.**
-  Its portability floor is just "an LLM that returns structured output." It is
-  *dispatched* as a CC subagent today, but would run identically as a Claude Agent
-  SDK sub-agent, another harness's subagent, or a plain API call — all behind the
-  *identical* `clusters.json → proposal JSON` contract. A future **decoupled mode**
-  is therefore a drop-in runner (e.g. a Go `analyst diagnose` subcommand calling an
-  LLM API per cluster); the binaries and schemas don't change.
+  1. **Corpus-in (the extractor) — the heavy lift.** Track A parses *Claude Code's*
+     exact `~/.claude/projects/**/*.jsonl` schema and tool vocabulary
+     (`Read`/`Edit`/`Agent`, `toolUseResult`, `isSidechain`). Another harness stores
+     sessions differently with different tool names, so it needs a **corpus adapter**
+     that normalizes its logs into the same `rec`/`tool_uses`/`tool_results` shape.
+     This is where the real work is — and it lives in the extractor, not here.
+  2. **Artifacts/domain-out (the analyst + applier) — moderate.** agent-smith
+     proposes edits to *Claude Code* artifact types (`CLAUDE.md`, subagent `.md`) and,
+     for `escalate-out-of-instructions`, *Claude Code hooks*. Another harness has its
+     own rules files (e.g. `AGENTS.md`-style) and its own enforcement mechanisms, so
+     this needs a **domain mapping** of "what artifacts exist + what non-prose
+     remedies exist."
+  3. **LLM dispatch + provider (the Oracle) — trivial.** By the "pre-include artifact
+     content, no tool use" decision (§4–§5), the Oracle is a pure `prompt → JSON`
+     completion, not a load-bearing subagent. Its portability floor is just "an LLM
+     that returns structured output"; subagent dispatch is itself a cross-harness
+     primitive. Swappable behind the `clusters.json → proposal JSON` contract via a
+     future drop-in runner (e.g. a Go `analyst diagnose` subcommand). The easy 5%.
 
-  **Phase-1 guardrail (enforced now so the seam stays clean):** the Oracle must
-  remain expressible as a plain `prompt → JSON` completion — no reliance on
-  tool-calling, file reads, or harness-specific subagent features to *produce its
-  output*. `oracle.md` and the `clusters.json`/proposal schemas may reference Claude
-  Code concepts as *subject matter* (diagnosing CC artifacts, proposing CC hooks)
-  but must not assume a CC runtime to run. We do **not** build the API runner now
-  (we deliberately chose subagent dispatch — no API-key/billing surface); we only
-  keep the contract swap-ready.
+  The **middle** of the pipeline (cluster → diagnose → assemble → PR) is largely
+  harness-agnostic *given normalized inputs* — so the reuse story is real, but it
+  depends on adapters at both ends, not on the Oracle.
+
+  **Stance for Phase 1:** agent-smith is explicitly **for Claude Code** (the target
+  setup). We do **not** build a corpus adapter or a domain mapping now — pure YAGNI.
+  We only preserve the natural seams that already exist: the extractor's normalized
+  `rec`/`tool_uses` layer (the corpus-adapter boundary) and the analyst's pure
+  `prompt → JSON` Oracle contract. For *this* analyst plan the only guardrail is
+  keeping the Oracle expressible as a plain completion (no tool-calling / file-reads
+  / harness-specific subagent features to produce its output); `oracle.md` and the
+  schemas may reference Claude Code concepts as *subject matter* but must not assume
+  a CC runtime to run.
