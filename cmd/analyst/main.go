@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/noamsto/agent-smith/internal/analyst"
 )
@@ -44,8 +45,31 @@ func runCluster(args []string) {
 	fmt.Printf("wrote %d clusters to %s\n", len(clusters), *out)
 }
 
-// runAssemble is implemented in Task 5; this stub keeps the build green until then.
 func runAssemble(args []string) {
-	fmt.Fprintln(os.Stderr, "assemble: not implemented yet")
-	os.Exit(1)
+	fs := flag.NewFlagSet("assemble", flag.ExitOnError)
+	dir := fs.String("proposals-dir", "proposals", "directory of per-cluster proposal JSON files")
+	out := fs.String("out", "proposals.json", "output proposals file")
+	reasonLog := fs.String("reason-log-dir", "reason-log", "append-only reason-log directory")
+	date := fs.String("date", "", "ISO date for reason-log filenames (default: today)")
+	fs.Parse(args)
+
+	d := *date
+	if d == "" {
+		d = time.Now().UTC().Format("2006-01-02")
+	}
+	props, errs := analyst.LoadProposals(*dir)
+	for _, e := range errs {
+		fmt.Fprintln(os.Stderr, "skip:", e)
+	}
+	if err := analyst.WriteProposals(props, *out); err != nil {
+		fmt.Fprintln(os.Stderr, "analyst assemble:", err)
+		os.Exit(1)
+	}
+	n, err := analyst.WriteReasonLogs(props, *reasonLog, d)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "analyst assemble:", err)
+		os.Exit(1)
+	}
+	fmt.Printf("wrote %d proposals to %s, %d new reason-log entries (%d skipped inputs)\n",
+		len(props), *out, n, len(errs))
 }
