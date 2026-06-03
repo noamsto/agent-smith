@@ -52,6 +52,19 @@ the `/agent-smith` command exists.
    git add reason-log/ && git commit -m "docs(reason-log): link applier PRs"
    ```
 
+## Recovering from a mid-loop failure
+
+Phase-1 retries are not yet fully idempotent (deferred — see the spec §8):
+
+- **`submit` failed after the commit but before/at the PR** — the branch and commit
+  exist locally. Re-running `open --id <same>` will fail (`git worktree add -b`
+  refuses an existing branch). Either resume `submit` against the worktree from the
+  first `open`, or discard and restart: `git -C <repo> worktree remove --force <wt>`
+  then `git -C <repo> branch -D <branch>`.
+- **`git push` rejected (remote branch diverged)** — inspect first, then push with
+  `git -C <wt> push --force-with-lease` only if you're sure the remote branch is a
+  stale agent-smith attempt.
+
 ## Acceptance check — skeleton-first (the Phase-1 bar)
 
 Prove the loop end-to-end against a throwaway repo, so no real PR is opened:

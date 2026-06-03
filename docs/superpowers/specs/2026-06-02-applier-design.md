@@ -177,12 +177,14 @@ args ...string) ([]byte, error)`) so tests run offline against a fake runner.
 
 ### 3.7 `reasonlog.go` — close the ledger entry
 
-`AppendPRLink(dir string, p Proposal, prURL, date string) error`: locate
-`reason-log/<date>-<slug>.md` (fallback: scan for the `# <id>` heading), and
-replace the `<!-- PR link appended by the applier; outcome appended by deja-vu -->`
-placeholder with `**PR:** <prURL>` followed by a residual
+`AppendPRLink(dir, id, prURL string) error`: locate the entry by **scanning the
+`reason-log/*.md` files for the `# <id>` heading** (not by reconstructing the
+analyst's slug — this keeps the applier decoupled from the analyst's filename
+logic), and replace the `<!-- PR link appended by the applier; outcome appended by
+deja-vu -->` placeholder with `**PR:** <prURL>` followed by a residual
 `<!-- outcome appended by deja-vu -->` marker. Idempotent: if a `**PR:**` line is
-already present, do nothing.
+already present, do nothing; if the heading matches but the placeholder is gone, it
+errors rather than silently no-opping.
 
 ### 3.8 `cmd/applier/main.go`
 
@@ -225,7 +227,7 @@ runbook (harness-specific), exactly as the Oracle is in the analyst.
 | `add` to a missing file | `ready`; editor creates the file. |
 | Editor declines (`applied:false`) or makes no change | `submit` finds an empty diff → skips with the reason; no PR. |
 | Verify gate flags issues | one editor revision pass, else notes appended to the PR body. |
-| `git push` / `gh` failure | local branch + commit are left intact; reported; re-run is idempotent (branch reused, PR-link append is idempotent). |
+| `git push` / `gh` failure | local branch + commit are left intact; reported. The PR-link append is idempotent, but **re-running `open` for the same proposal is not yet idempotent** — `git worktree add -b` fails if the branch already exists, so a retry after a mid-`submit` failure needs manual cleanup (`git -C <repo> branch -D <branch>`, or resume with the original worktree). Full retry idempotency is deferred (§8). |
 | Dirty live checkout | irrelevant — all work is in an isolated worktree off the default branch. |
 | Worktree cleanup | deferred `Drop`, runs even on panic/early return. |
 
@@ -282,3 +284,5 @@ binary names. No CGO; stdlib-only Go; the binary shells out to `git`/`gh`.
 - Auto-commit for nix-config-owned artifacts (Phase 2 — a `submit` branch).
 - The `/agent-smith` orchestration command (extractor → analyst → applier).
 - `deja-vu` outcome append to the reason-log.
+- Idempotent `open` retry: reusing/resetting an already-created branch after a
+  mid-`submit` failure, instead of requiring a manual `git branch -D`.
