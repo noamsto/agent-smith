@@ -23,12 +23,22 @@ a PR — never an auto-commit.
 ```bash
 nix develop
 go run ./cmd/applier prepare --proposals proposals.json --out apply-plan.json
+go run ./cmd/applier suggest --plan apply-plan.json --proposals proposals.json --out suggestions.md  # dry run: review-only, no edits/PRs
 go run ./cmd/applier open    --plan apply-plan.json --id <proposal-id>     # → worktree + file path
 #   (dispatch the editor subagent → editor-result.json; run the verify gate)
 go run ./cmd/applier submit  --plan apply-plan.json --proposals proposals.json \
     --id <proposal-id> --worktree <path> --editor-result editor-result.json \
     --reason-log-dir reason-log
 ```
+
+## Dry run
+
+`suggest` renders a side-effect-free markdown index of what the loop *would* do —
+NO git, worktrees, edits, or PRs. It joins the resolved plan with the proposals and
+writes one section per `ready` proposal (where it would land — branch/base/repo —
+plus the diagnosis and the Oracle's proposed change), followed by a list of skipped
+entries with their status. Read `suggestions.md` to review the whole batch before
+running the real `open`/`submit` loop.
 
 ## Resolution & status
 

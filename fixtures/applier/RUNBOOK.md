@@ -18,6 +18,10 @@ the `/agent-smith` command exists.
    ```
    Review skips printed to stderr (`skip-unresolved`, `skip-missing-file`).
 
+   **Dry run (review-only):** to preview every proposal without touching any repo,
+   run `applier suggest --plan apply-plan.json --proposals proposals.json --out suggestions.md`
+   and read `suggestions.md`. No worktrees, edits, or PRs are created.
+
 2. **For each `ready` entry (by `proposal_id`):**
 
    a. **Open a worktree:**

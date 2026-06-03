@@ -12,7 +12,7 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: applier <prepare|open|submit> [flags]")
+		fmt.Fprintln(os.Stderr, "usage: applier <prepare|open|submit|suggest> [flags]")
 		os.Exit(2)
 	}
 	switch os.Args[1] {
@@ -22,6 +22,8 @@ func main() {
 		runOpen(os.Args[2:])
 	case "submit":
 		runSubmit(os.Args[2:])
+	case "suggest":
+		runSuggest(os.Args[2:])
 	default:
 		fmt.Fprintf(os.Stderr, "unknown subcommand %q\n", os.Args[1])
 		os.Exit(2)
@@ -145,14 +147,22 @@ func runSubmit(args []string) {
 	fmt.Printf("opened PR for %s: %s\n", *id, url)
 }
 
-func loadProposal(path, id string) (analyst.Proposal, error) {
+func loadAllProposals(path string) ([]analyst.Proposal, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return analyst.Proposal{}, fmt.Errorf("read proposals %s: %w", path, err)
+		return nil, fmt.Errorf("read proposals %s: %w", path, err)
 	}
 	var props []analyst.Proposal
 	if err := json.Unmarshal(data, &props); err != nil {
-		return analyst.Proposal{}, fmt.Errorf("parse proposals %s: %w", path, err)
+		return nil, fmt.Errorf("parse proposals %s: %w", path, err)
+	}
+	return props, nil
+}
+
+func loadProposal(path, id string) (analyst.Proposal, error) {
+	props, err := loadAllProposals(path)
+	if err != nil {
+		return analyst.Proposal{}, err
 	}
 	for _, p := range props {
 		if p.ID == id {
@@ -160,6 +170,33 @@ func loadProposal(path, id string) (analyst.Proposal, error) {
 		}
 	}
 	return analyst.Proposal{}, fmt.Errorf("proposal %q not in %s", id, path)
+}
+
+func runSuggest(args []string) {
+	fs := flag.NewFlagSet("suggest", flag.ExitOnError)
+	planPath := fs.String("plan", "apply-plan.json", "apply-plan file")
+	proposalsPath := fs.String("proposals", "proposals.json", "assembled proposals file")
+	out := fs.String("out", "suggestions.md", "output suggestions markdown file")
+	_ = fs.Parse(args)
+
+	plan, err := applier.ReadPlan(*planPath)
+	if err != nil {
+		fatal(err)
+	}
+	props, err := loadAllProposals(*proposalsPath)
+	if err != nil {
+		fatal(err)
+	}
+	if err := applier.WriteSuggestions(applier.Suggest(plan, props), *out); err != nil {
+		fatal(err)
+	}
+	ready := 0
+	for _, e := range plan {
+		if e.Status == applier.StatusReady {
+			ready++
+		}
+	}
+	fmt.Printf("wrote suggestions for %d proposal(s) (%d actionable) to %s\n", len(plan), ready, *out)
 }
 
 func loadEditorResult(path string) (applier.EditorResult, error) {
