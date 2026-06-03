@@ -3,15 +3,16 @@
 > For a fresh Claude Code session started inside this repo. Read this first, then
 > the relevant spec/plan/doc for whatever you're picking up.
 
-## Where things stand (updated 2026-06-01)
+## Where things stand (updated 2026-06-03)
 
 - **Repo:** `github.com/noamsto/agent-smith` (public). Local: `~/Data/git/noamsto/agent-smith`. Default branch `main`.
 - **Design:** approved. Top-level design: [`docs/specs/2026-06-01-agent-smith-design.md`](specs/2026-06-01-agent-smith-design.md).
 - **Built & merged to `main`:**
   - **Extractor (Track A)** — `cmd/extractor` + `internal/extractor`. Usage: [`docs/extractor.md`](extractor.md).
   - **Analyst** — `cmd/analyst` + `internal/analyst` (the `cluster` + `assemble` binaries and the **Oracle** prompt). Spec: [`docs/superpowers/specs/2026-06-01-analyst-design.md`]. Plan: [`docs/superpowers/plans/2026-06-01-analyst.md`]. Usage: [`docs/analyst.md`](analyst.md).
+  - **Applier** — `cmd/applier` + `internal/applier` (the `prepare`/`open`/`submit` binary + the **Editor** prompt + verify gate). Usage: [`docs/applier.md`](applier.md). Runbook: `fixtures/applier/RUNBOOK.md`.
 - **Acceptance bar (skeleton-first) — MET end-to-end:** extractor flags whole-file large Reads as `inefficiency`; `analyst cluster` traces them (via candidate explosion) to the global `CLAUDE.md`; the Oracle chose `strengthen` (not duplicate `add`) in a real golden-eval run → `assemble` wrote the proposal + reason-log.
-- **Next:** the **Applier** (consumes `proposals.json` → cross-repo PR, closing the loop) and/or **Track B** (freshness audit). Plus the `/agent-smith` orchestration command (built with the applier).
+- **Next:** **Track B** (freshness audit) plus the `/agent-smith` orchestration command (the applier is now built — it closes the extractor→analyst→applier loop).
 
 ## What agent-smith is (one paragraph)
 
@@ -21,7 +22,7 @@ analyst feed one cross-repo applier.** Track A mines `~/.claude/projects/**/*.js
 session history with duckdb for behavioral *glitches*. Track B (not built yet)
 audits the artifacts' *external claims* for freshness. The analyst clusters
 incidents, applies a ≥3-session threshold, diagnoses a `fix_type`, and emits
-proposals + reason logs. The applier (not built yet) opens a PR against whichever
+proposals + reason logs. The applier opens a PR against whichever
 repo owns the artifact. `deja-vu` (Phase 2) re-mines to confirm the glitch dropped.
 
 ## Phase 1 status
@@ -31,7 +32,7 @@ repo owns the artifact. `deja-vu` (Phase 2) re-mines to confirm the glitch dropp
 | Extractor (Track A) | ✅ on `main` | `cmd/extractor`, `internal/extractor`, `docs/extractor.md` |
 | Analyst | ✅ on `main` | `cmd/analyst`, `internal/analyst`, `docs/analyst.md` |
 | Track B — Freshness audit | ⬜ not started | spec §5 |
-| Applier (proposals → PR) | ⬜ not started | spec §7 |
+| Applier (proposals → PR) | ✅ on `main` | `cmd/applier`, `internal/applier`, `docs/applier.md` |
 | `/agent-smith` command (orchestration) | ⬜ deferred | build with the applier |
 
 ## How to build / test / run
@@ -40,16 +41,22 @@ repo owns the artifact. `deja-vu` (Phase 2) re-mines to confirm the glitch dropp
 nix develop                       # devshell: go, duckdb, jq, gopls
 go test ./...                     # all tests (extractor + analyst)
 go build ./...                    # both binaries
-nix build .#default               # packaged, duckdb-wrapped binaries (result/bin/{extractor,analyst})
+nix build .#default               # packaged binaries (result/bin/{extractor,analyst,applier}); extractor/analyst duckdb-wrapped, applier git+gh-wrapped
 
 # Track A end-to-end:
 go run ./cmd/extractor --out incidents.db                  # mine the corpus
 go run ./cmd/analyst cluster --db incidents.db --out clusters.json
 #   → dispatch the Oracle (internal/analyst/oracle.md) per cluster → proposal JSONs
 go run ./cmd/analyst assemble --proposals-dir proposals --out proposals.json --reason-log-dir reason-log
+
+# Applier (Phase 1, consumes proposals.json):
+go run ./cmd/applier prepare --proposals proposals.json --out apply-plan.json
+#   → per ready entry: open → dispatch Editor subagent → verify gate → submit (PR)
+go run ./cmd/applier submit --plan apply-plan.json --proposals proposals.json --id <id> --worktree <wt> --editor-result editor-result.json
 ```
 
 Analyst golden-eval runbook (the on-demand Oracle acceptance check): `fixtures/analyst/RUNBOOK.md`.
+Applier runbook (editor + verify dispatch): `fixtures/applier/RUNBOOK.md`.
 
 ## Key decisions locked (this matters for the next unit)
 
