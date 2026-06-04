@@ -1,8 +1,11 @@
 # Applier RUNBOOK — manual dispatch loop (Phase 1)
 
 The applier binary is deterministic; the **editor** and **verify** steps are Claude
-Code subagent dispatches the orchestrator drives. This runbook is the glue until
-the `/agent-smith` command exists.
+Code subagent dispatches the orchestrator drives.
+
+> **Superseded by `/agent-smith`.** This manual loop is now automated by the
+> `/agent-smith` plugin command (`commands/agent-smith.md`); keep this RUNBOOK for
+> debugging individual steps and as the editor+verify reference.
 
 ## Prerequisites
 
@@ -31,7 +34,7 @@ the `/agent-smith` command exists.
       Line 1 = worktree path (`$WT`); line 2 = the file to edit (`$FILE`).
 
    b. **Dispatch the editor subagent** (Agent tool). Inline the prompt from
-      `internal/applier/editor.md`, plus the proposal JSON (from `proposals.json`),
+      `agents/editor.md`, plus the proposal JSON (from `proposals.json`),
       `file=$FILE`, and `repo_root=$WT`. Capture its JSON output to
       `editor-result.json`.
 
