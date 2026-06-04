@@ -159,19 +159,36 @@ func defaultBranch(root string) string {
 }
 
 // Resolve maps a proposal's implicated_artifact to the repo, file, owner, and
-// branch the applier will act on.
+// branch the applier will act on. It follows symlinks to the editable source and
+// resolves linked worktrees to their canonical main repo.
 func Resolve(p analyst.Proposal) (Target, error) {
-	path, section := splitArtifact(p.ImplicatedArtifact)
-	root, err := repoRoot(path)
+	artifactPath, section := splitArtifact(p.ImplicatedArtifact)
+	real, err := resolveRealPath(artifactPath)
 	if err != nil {
-		return Target{}, err
+		return Target{}, fmt.Errorf("resolve %s: %w", artifactPath, err)
+	}
+	if isImmutableStorePath(real) {
+		return Target{}, fmt.Errorf("artifact resolves into the immutable nix store: %s", real)
+	}
+	worktreeRoot, err := repoRoot(real)
+	if err != nil {
+		return Target{}, fmt.Errorf("resolve %s: %w", artifactPath, err)
+	}
+	mainRoot := mainRepoRoot(worktreeRoot)
+	file := real
+	if mainRoot != worktreeRoot {
+		rel, rerr := filepath.Rel(worktreeRoot, real)
+		if rerr != nil {
+			return Target{}, fmt.Errorf("remap %s from worktree to main repo: %w", real, rerr)
+		}
+		file = filepath.Join(mainRoot, rel)
 	}
 	return Target{
-		RepoRoot:   root,
-		FilePath:   path,
+		RepoRoot:   mainRoot,
+		FilePath:   file,
 		Section:    section,
-		Owner:      classifyOwner(root),
+		Owner:      classifyOwner(mainRoot),
 		BranchName: fmt.Sprintf("%s/agent-smith-%s", commitType(p.FixType), slug(p.ID)),
-		Base:       defaultBranch(root),
+		Base:       defaultBranch(mainRoot),
 	}, nil
 }

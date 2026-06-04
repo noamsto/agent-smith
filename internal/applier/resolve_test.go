@@ -75,8 +75,12 @@ func TestResolve(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tg.RepoRoot != root {
-		t.Errorf("RepoRoot = %q, want %q", tg.RepoRoot, root)
+	wantRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tg.RepoRoot != wantRoot {
+		t.Errorf("RepoRoot = %q, want %q", tg.RepoRoot, wantRoot)
 	}
 	if tg.Section != "reading-code" {
 		t.Errorf("Section = %q", tg.Section)
@@ -172,6 +176,70 @@ func TestResolveRealPathBrokenLink(t *testing.T) {
 	}
 	if _, err := resolveRealPath(link); err == nil {
 		t.Error("expected error for a broken symlink")
+	}
+}
+
+func TestResolveFollowsSymlink(t *testing.T) {
+	repo := initRepo(t, "https://github.com/noamsto/nix-config.git")
+	link := filepath.Join(t.TempDir(), "CLAUDE.md") // in a non-git dir, like ~/.claude
+	if err := os.Symlink(filepath.Join(repo, "CLAUDE.md"), link); err != nil {
+		t.Fatal(err)
+	}
+	tg, err := Resolve(analyst.Proposal{
+		ID: "g", ImplicatedArtifact: link + "#reading-code", FixType: "strengthen",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantRoot, err := filepath.EvalSymlinks(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tg.RepoRoot != wantRoot {
+		t.Errorf("RepoRoot = %q, want %q", tg.RepoRoot, wantRoot)
+	}
+	wantFile, err := filepath.EvalSymlinks(filepath.Join(repo, "CLAUDE.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tg.FilePath != wantFile {
+		t.Errorf("FilePath = %q, want %q", tg.FilePath, wantFile)
+	}
+	if tg.Owner != "nix-config" {
+		t.Errorf("Owner = %q", tg.Owner)
+	}
+	if tg.Section != "reading-code" {
+		t.Errorf("Section = %q", tg.Section)
+	}
+}
+
+func TestResolveWorktreeToMain(t *testing.T) {
+	main := initRepo(t, "https://github.com/noamsto/nix-config.git")
+	wt := filepath.Join(t.TempDir(), "wt")
+	if out, err := git(main, "worktree", "add", "-b", "wtb", wt); err != nil {
+		t.Fatalf("git worktree add: %v: %s", err, out)
+	}
+	tg, err := Resolve(analyst.Proposal{
+		ID: "g", ImplicatedArtifact: filepath.Join(wt, "CLAUDE.md"), FixType: "strengthen",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantMain, err := filepath.EvalSymlinks(main)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tg.RepoRoot != wantMain {
+		t.Errorf("RepoRoot = %q, want main %q (not the worktree)", tg.RepoRoot, wantMain)
+	}
+	if tg.FilePath != filepath.Join(wantMain, "CLAUDE.md") {
+		t.Errorf("FilePath = %q, want %q", tg.FilePath, filepath.Join(wantMain, "CLAUDE.md"))
+	}
+	if tg.Owner != "nix-config" {
+		t.Errorf("Owner = %q, want nix-config", tg.Owner)
+	}
+	if tg.Base != "main" {
+		t.Errorf("Base = %q, want main", tg.Base)
 	}
 }
 
