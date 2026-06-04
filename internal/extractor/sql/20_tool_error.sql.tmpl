@@ -33,6 +33,8 @@ WITH events AS (
     json_object('tool', b.tool, 'input', b.input_str) AS detail,
     b.turn
   FROM tool_uses a
+  JOIN tool_results ra
+    ON ra.session_id = a.session_id AND ra.tuid = a.tuid AND ra.is_error
   JOIN tool_uses b
     ON b.session_id = a.session_id
    AND b.tool = a.tool
