@@ -1,7 +1,7 @@
 ---
 description: Run the agent-smith loop — mine session glitches, diagnose fixes (Oracle), and open draft PRs (Editor). Bare = full autonomous run; or pass mine|propose|apply [<id>]|status.
 argument-hint: "[mine|propose|apply [<id>]|status]"
-allowed-tools: Bash, Read, Write, Agent
+allowed-tools: Bash, Read, Write, Agent, Skill
 ---
 
 You are orchestrating the **agent-smith** loop. The deterministic steps are the
@@ -47,7 +47,9 @@ Precondition: `proposals.json` exists (else run `propose` first).
    b. Extract that proposal object from `proposals.json` to a temp file. Dispatch the
       **agent-smith:editor** subagent (Agent tool) with: the proposal temp-file path,
       `file=$FILE`, `repo_root=$WT`, and the instruction to follow its own contract
-      and write its result JSON to `$WT/../editor-result-<id>.json`.
+      and write its result JSON to `/tmp/agent-smith-proposals-in/editor-result-<id>.json`
+      (this path is the editor's output sink — writing it is not an artifact edit, so it is
+      fine that it lives outside the worktree).
    c. **Verify gate** on `git -C "$WT" diff`:
       - Always run the `deslop` skill/review on the diff.
       - If the diff touches a hook, `settings.json`, or a Nix `*.nix` overlay, also
@@ -56,7 +58,7 @@ Precondition: `proposals.json` exists (else run `propose` first).
         `agent-smith:editor` once more with the findings appended (one revision pass).
         Otherwise carry the notes forward (they go in the PR body).
    d. `applier submit --plan apply-plan.json --proposals proposals.json --id <id>
-      --worktree "$WT" --editor-result <result-file> --reason-log-dir reason-log --draft`
+      --worktree "$WT" --editor-result /tmp/agent-smith-proposals-in/editor-result-<id>.json --reason-log-dir reason-log --draft`
       (always `--draft`).
    e. If the editor declined (`applied:false`), the diff was empty, or any step
       failed: record a **skip** with the reason and continue to the next id. Never abort
