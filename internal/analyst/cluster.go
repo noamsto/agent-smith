@@ -16,6 +16,7 @@ type Cluster struct {
 	ArtifactContent  *string         `json:"artifact_content"` // nil if the file is missing
 	ArtifactExists   bool            `json:"artifact_exists"`
 	DistinctSessions int             `json:"distinct_sessions"`
+	TotalIncidents   int             `json:"total_incidents"`
 	Incidents        json.RawMessage `json:"incidents"` // JSON array of member incidents
 }
 
@@ -24,13 +25,15 @@ type clusterRow struct {
 	Artifact         string          `json:"artifact"`
 	SignalType       string          `json:"signal_type"`
 	DistinctSessions int             `json:"distinct_sessions"`
+	TotalIncidents   int             `json:"total_incidents"`
 	Incidents        json.RawMessage `json:"incidents"`
 }
 
 // clusterSQL explodes each incident across its candidate artifacts, groups by
 // (artifact, signal_type), keeps groups with >= minSessions distinct sessions,
 // and aggregates the member incidents into a JSON array per cluster.
-func clusterSQL(minSessions int) string {
+func clusterSQL(minSessions, maxIncidents int) string {
+	_ = maxIncidents // used in Task 2 (session-stratified sampling)
 	return fmt.Sprintf(`
 WITH exploded AS (
   SELECT incident_id, session_id, ts, confidence, detail, "window", signal_type,
@@ -38,26 +41,29 @@ WITH exploded AS (
   FROM incidents
 ),
 gated AS (
-  SELECT artifact, signal_type
+  SELECT artifact, signal_type,
+         count(DISTINCT session_id) AS distinct_sessions,
+         count(*) AS total_incidents
   FROM exploded
   GROUP BY artifact, signal_type
   HAVING count(DISTINCT session_id) >= %d
 )
 SELECT e.artifact,
        e.signal_type,
-       count(DISTINCT e.session_id) AS distinct_sessions,
+       g.distinct_sessions,
+       g.total_incidents,
        to_json(list(struct_pack(
          incident_id := e.incident_id, session_id := e.session_id, ts := e.ts,
          confidence := e.confidence, detail := e.detail, "window" := e."window"))) AS incidents
 FROM exploded e
 JOIN gated g USING (artifact, signal_type)
-GROUP BY e.artifact, e.signal_type
-ORDER BY distinct_sessions DESC, e.artifact, e.signal_type;`, minSessions)
+GROUP BY e.artifact, e.signal_type, g.distinct_sessions, g.total_incidents
+ORDER BY g.distinct_sessions DESC, e.artifact, e.signal_type;`, minSessions)
 }
 
 // clusterRows runs the clustering query against db and returns the raw rows.
-func clusterRows(ctx context.Context, db string, minSessions int) ([]clusterRow, error) {
-	out, err := queryJSON(ctx, db, clusterSQL(minSessions))
+func clusterRows(ctx context.Context, db string, minSessions, maxIncidents int) ([]clusterRow, error) {
+	out, err := queryJSON(ctx, db, clusterSQL(minSessions, maxIncidents))
 	if err != nil {
 		return nil, err
 	}
@@ -73,8 +79,8 @@ func clusterRows(ctx context.Context, db string, minSessions int) ([]clusterRow,
 
 // ClusterDB runs the clustering query, then reads each implicated artifact's
 // current content from disk, returning fully-populated clusters.
-func ClusterDB(ctx context.Context, db string, minSessions int) ([]Cluster, error) {
-	rows, err := clusterRows(ctx, db, minSessions)
+func ClusterDB(ctx context.Context, db string, minSessions, maxIncidents int) ([]Cluster, error) {
+	rows, err := clusterRows(ctx, db, minSessions, maxIncidents)
 	if err != nil {
 		return nil, err
 	}
@@ -85,6 +91,7 @@ func ClusterDB(ctx context.Context, db string, minSessions int) ([]Cluster, erro
 			SignalType:       r.SignalType,
 			Artifact:         r.Artifact,
 			DistinctSessions: r.DistinctSessions,
+			TotalIncidents:   r.TotalIncidents,
 			Incidents:        r.Incidents,
 		}
 		if data, err := os.ReadFile(r.Artifact); err == nil {

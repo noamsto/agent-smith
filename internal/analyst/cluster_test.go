@@ -40,7 +40,7 @@ func TestClusterExplodesAndGates(t *testing.T) {
 	   '["/g/CLAUDE.md"]'::JSON,'[]'::JSON,'medium','{}'::JSON);`
 	db := makeIncidentsDB(t, ins)
 
-	rows, err := clusterRows(context.Background(), db, 3)
+	rows, err := clusterRows(context.Background(), db, 3, 0)
 	if err != nil {
 		t.Fatalf("clusterRows: %v", err)
 	}
@@ -55,6 +55,9 @@ func TestClusterExplodesAndGates(t *testing.T) {
 	}
 	if r.DistinctSessions != 3 {
 		t.Errorf("expected 3 distinct sessions, got %d", r.DistinctSessions)
+	}
+	if r.TotalIncidents != 3 {
+		t.Errorf("expected total_incidents 3, got %d", r.TotalIncidents)
 	}
 	if string(r.Incidents) == "" || string(r.Incidents) == "null" {
 		t.Errorf("expected member incidents JSON, got %q", r.Incidents)
@@ -79,7 +82,7 @@ func TestClusterDBBundlesArtifactContent(t *testing.T) {
 	   '["` + artifact + `","` + missing + `"]'::JSON,'[]'::JSON,'high','{}'::JSON);`
 	db := makeIncidentsDB(t, ins)
 
-	clusters, err := ClusterDB(context.Background(), db, 3)
+	clusters, err := ClusterDB(context.Background(), db, 3, 0)
 	if err != nil {
 		t.Fatalf("ClusterDB: %v", err)
 	}
