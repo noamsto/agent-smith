@@ -6,7 +6,7 @@
 
 *It patrols the agents-matrix, finds the glitches where reality stuttered, and rewrites the rules so the déjà vu stops happening.*
 
-[![status](https://img.shields.io/badge/status-design--stage-1a1a1a)](docs/specs/2026-06-01-agent-smith-design.md)
+[![status](https://img.shields.io/badge/status-phase%201%20live-00ff41?labelColor=1a1a1a)](docs/HANDOFF.md)
 [![engine](https://img.shields.io/badge/engine-DuckDB%20%2B%20Opus-00ff41?labelColor=1a1a1a)](#the-two-ways-it-sees)
 [![built for](https://img.shields.io/badge/built%20for-Claude%20Code-8A2BE2?labelColor=1a1a1a)](https://docs.claude.com/en/docs/claude-code)
 [![packaged with](https://img.shields.io/badge/packaged%20with-Nix-5277C3?logo=nixos&logoColor=white&labelColor=1a1a1a)](https://nixos.org)
@@ -46,7 +46,7 @@ flowchart TD
         sh["session history<br/>~hundreds of .jsonl"] -->|"duckdb · jq · cheap"| ext["extractor"] --> inc(["incidents"])
     end
 
-    subgraph B["🌐 TRACK B · freshness audit — is what they claim still true?"]
+    subgraph B["🌐 TRACK B · freshness audit (planned) — is what they claim still true?"]
         direction LR
         art["the artifacts<br/>tools · flags · APIs · URLs"] --> claim["claim<br/>extractor"] -->|"web · docs · context7"| exp["explorers"] --> ver(["claim verdicts"])
     end
@@ -66,18 +66,23 @@ flowchart TD
     class A,B track;
 ```
 
-**Track A — corpus mining.** Pure SQL and `jq` over your `.jsonl` session logs.
-No model, no token cost, runs over everything. It hunts five kinds of glitch:
+**Track A — corpus mining.** Pure SQL (DuckDB) over your `.jsonl` session logs.
+No model, no token cost, runs over everything. It hunts four kinds of glitch:
 
 | Signal | The tell |
 |--------|----------|
-| **tool error / retry** | a command failed, or the agent tried the same thing twice |
-| **user correction** | you said *"no"*, *"actually…"*, *"revert that"* — or hit Esc |
-| **repeated guidance** | the *same* correction across **≥3 sessions** — a pattern, not a fluke |
-| **inefficiency** | reading whole files when a skeleton would do; redundant search chains |
-| **orchestrator disagreement** | an Opus orchestrator overruling what its Sonnet subagent reported — the subagent's instructions let it be wrong |
+| **tool_error** | a tool call came back as an error |
+| **retry** | the identical call re-issued within a few turns — and the earlier attempt **failed** (intentional successful re-runs don't count) |
+| **user_correction** | you said *"no"*, *"actually…"*, *"revert that"* — or interrupted |
+| **inefficiency** | unbounded whole-file reads where a skeleton would do |
 
-**Track B — freshness audit.** The backward look can't catch a rule that was right
+*Repeated guidance* — the same glitch across **≥3 distinct sessions** — is the
+analyst's clustering threshold, applied on top of every signal: a pattern, not a
+fluke. Big clusters are fed to the Oracle as a **session-stratified sample**
+(breadth across sessions before depth) with truthful totals, so even a
+2,000-incident cluster fits in one diagnosis.
+
+**Track B — freshness audit** *(planned)*. The backward look can't catch a rule that was right
 when written and rotted since. So agent-smith reads the artifacts, extracts every
 external claim — a tool name, a CLI flag, a library API, a URL, a "best practice" —
 and **fans out one explorer per claim** to check it against the live world
@@ -105,10 +110,37 @@ answer isn't a louder rule, it's **defining the error out of existence** —
 converting a suggestion the model can rationalize past into deterministic
 enforcement the harness runs. agent-smith is allowed to propose that.
 
-Nothing lands silently. Every change ships as a **pull request** against whichever
-repo owns the artifact, with a **reason log** entry — the diagnosis, the evidence,
-the expected effect. Later, `déjà-vu` re-mines and records whether the glitch rate
-actually dropped. *Cause, effect, receipts.*
+Nothing lands silently. Every change ships as a **draft pull request** against
+whichever repo owns the artifact — gated by a deterministic **preflight** (title
+lint, exactly one commit over `origin/<base>`, no files beyond what the editor
+reported) and a subagent **verify** pass — with a **reason log** entry: the
+diagnosis, the evidence, the expected effect. You merge; nothing merges itself.
+Later, `déjà-vu` re-mines and records whether the glitch rate actually dropped.
+*Cause, effect, receipts.*
+
+---
+
+## Run it
+
+```bash
+nix develop              # devshell: go, duckdb, jq, git, gh
+go test ./...            # full suite
+nix build .#default      # → result/bin/{extractor,analyst,applier}
+```
+
+The repo is also a **Claude Code plugin** (and its own single-plugin marketplace).
+Enable it interactively — `/plugin marketplace add noamsto/agent-smith`, then
+`/plugin install agent-smith@agent-smith` — or declaratively via
+`extraKnownMarketplaces` + `enabledPlugins` in `settings.json`. The three binaries
+must be on PATH (nix). Then:
+
+```
+/agent-smith              # the whole loop, autonomously → draft PRs
+/agent-smith mine         # extractor → clusters
+/agent-smith propose      # Oracle per cluster → proposals (review-only)
+/agent-smith apply [<id>] # editor → verify → draft PR
+/agent-smith status       # where things stand
+```
 
 ---
 
@@ -116,18 +148,26 @@ actually dropped. *Cause, effect, receipts.*
 
 > *"It is inevitable."*
 
-Design-stage. The architecture is specified and approved; implementation is next.
+**Phase 1 is live.** The loop — extractor → analyst (Oracle) → applier — is built,
+tested, and proven end-to-end on a real corpus. Fittingly, the acceptance-bar
+glitch itself (agents ignoring the skeleton-first reading rule: 147 incidents
+across 87 sessions) came out the other side as the **first real pull request** —
+proposing a PreToolUse hook, the `escalate-out-of-instructions` move, exactly as
+designed.
 
-📄 **Full design:** [`docs/specs/2026-06-01-agent-smith-design.md`](docs/specs/2026-06-01-agent-smith-design.md)
+📄 **Design:** [`docs/specs/2026-06-01-agent-smith-design.md`](docs/specs/2026-06-01-agent-smith-design.md) · **Working state:** [`docs/HANDOFF.md`](docs/HANDOFF.md)
 
 **Roadmap**
 
-- **Phase 1 — MVP.** Both tracks → analyst → PR + reason logs. Manual trigger.
-  Acceptance bar: correctly catch the skeleton-first whole-file-read glitch and
-  trace it to the *existing* rule (strengthen), not a duplicate.
-- **Phase 2 — the loop.** `déjà-vu` trend validation; scheduled runs;
+- ✅ **Phase 1 — MVP.** Track A → analyst → draft PR + reason logs; the
+  `/agent-smith` plugin; pre-PR preflight. Acceptance bar met — and shipped as a
+  real PR.
+- ⏭ **Next.** Declarative install wiring ([#3](https://github.com/noamsto/agent-smith/issues/3)) ·
+  HTML status dashboard ([#2](https://github.com/noamsto/agent-smith/issues/2)) ·
+  **Track B** freshness audit.
+- 🔄 **Phase 2 — the loop.** `déjà-vu` trend validation; scheduled runs;
   auto-commit for self-owned artifacts. The self-improving flywheel.
-- **Phase 3 — the hook.** Inline capture so future mining gets even cheaper.
+- 🪝 **Phase 3 — the hook.** Inline capture so future mining gets even cheaper.
 
 ---
 
