@@ -46,6 +46,23 @@ func sampleProposal() analyst.Proposal {
 	}
 }
 
+func TestCommitMessageNoDoublePrefix(t *testing.T) {
+	// An editor summary that is already a conventional-commit subject must be
+	// used as-is — not given a second type prefix ("chore: feat(...): ...",
+	// the malformed title nix-config#2 shipped with).
+	ed := EditorResult{Applied: true, Summary: "feat(claude-code): enforce skeleton-first reads"}
+	title, _ := commitMessage(sampleProposal(), ed)
+	if title != "feat(claude-code): enforce skeleton-first reads" {
+		t.Errorf("title = %q; want the editor subject unchanged", title)
+	}
+	// A plain imperative summary still gets the fix-type prefix.
+	ed.Summary = "raise skeleton-first rule"
+	title, _ = commitMessage(sampleProposal(), ed)
+	if title != "docs: raise skeleton-first rule" {
+		t.Errorf("title = %q; want a docs: prefix", title)
+	}
+}
+
 func TestSubmitCreatesPR(t *testing.T) {
 	dir := t.TempDir()
 	rlPath := filepath.Join(dir, "2026-06-01-glitch-skeleton.md")

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strings"
 
 	"github.com/noamsto/agent-smith/internal/analyst"
@@ -60,6 +61,10 @@ func lastLine(s string) string {
 	return s
 }
 
+// ccSubjectRe matches a summary that is already a conventional-commit subject
+// (e.g. "feat(scope): ..."), so commitMessage must not prepend a second type.
+var ccSubjectRe = regexp.MustCompile(`^[a-z]+(\([^)]*\))?!?: `)
+
 // commitMessage builds the conventional-commit subject and body for a proposal.
 func commitMessage(p analyst.Proposal, ed EditorResult) (title, body string) {
 	summary := ed.Summary
@@ -67,6 +72,9 @@ func commitMessage(p analyst.Proposal, ed EditorResult) (title, body string) {
 		summary = firstLine(p.Diagnosis)
 	}
 	title = fmt.Sprintf("%s: %s", commitType(p.FixType), summary)
+	if ccSubjectRe.MatchString(summary) {
+		title = summary // already conventional — don't double the prefix
+	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s\n\nEvidence:\n", p.Diagnosis)
 	for _, e := range p.Evidence {

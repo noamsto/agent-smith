@@ -63,7 +63,7 @@ Return ONLY this JSON (no markdown fences):
 {
   "applied": true,
   "files_changed": ["<worktree-relative path you edited>"],
-  "summary": "<imperative one-line description, used as the PR/commit subject>",
+  "summary": "<imperative one-line description, used as the PR/commit subject — NO conventional-commit type prefix (no `feat:`/`chore:`); the applier prepends one from fix_type>",
   "reason": ""
 }
 

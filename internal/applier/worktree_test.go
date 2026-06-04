@@ -3,6 +3,7 @@ package applier
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -37,5 +38,42 @@ func TestOpenAndDropWorktree(t *testing.T) {
 	}
 	if _, err := os.Stat(wt); !os.IsNotExist(err) {
 		t.Error("worktree dir should be gone after Drop")
+	}
+}
+
+func TestOpenBasesOffOriginNotLocalTip(t *testing.T) {
+	// Unpushed local commits on the base branch must NOT leak into the PR
+	// branch (nix-config#2 shipped with an unrelated local commit). When a
+	// remote-tracking origin/<base> exists, Open must branch from it.
+	root := initRepo(t, "https://github.com/noamsto/nix-config.git")
+	gitRun := func(args ...string) []byte {
+		out, err := git(root, args...)
+		if err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+		return out
+	}
+	seed := strings.TrimSpace(string(gitRun("rev-parse", "HEAD")))
+	// Simulate a fetched origin/main at the seed commit.
+	gitRun("update-ref", "refs/remotes/origin/main", seed)
+	// Add an unpushed local-only commit on main.
+	if err := os.WriteFile(filepath.Join(root, "LOCAL-ONLY.txt"), []byte("unpushed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitRun("add", "-A")
+	gitRun("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-m", "local-only")
+
+	tg := Target{RepoRoot: root, FilePath: filepath.Join(root, "CLAUDE.md"),
+		BranchName: "docs/agent-smith-origin-base", Base: "main"}
+	wt, err := Open(tg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = Drop(root, wt) }()
+	if _, err := os.Stat(filepath.Join(wt, "CLAUDE.md")); err != nil {
+		t.Errorf("worktree missing seeded file: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(wt, "LOCAL-ONLY.txt")); !os.IsNotExist(err) {
+		t.Error("worktree contains the unpushed local-only commit; Open must base off origin/main")
 	}
 }

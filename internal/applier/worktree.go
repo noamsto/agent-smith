@@ -9,13 +9,20 @@ import (
 
 // Open creates a fresh git worktree of t.RepoRoot on a new branch (t.BranchName
 // off t.Base) in a temp directory, returning the worktree path. The live checkout
-// is never touched.
+// is never touched. When a remote-tracking origin/<base> exists, the branch starts
+// there — branching from the local base tip would leak unpushed local commits
+// into the PR.
 func Open(t Target) (string, error) {
 	wt, err := os.MkdirTemp("", "agent-smith-wt-")
 	if err != nil {
 		return "", err
 	}
-	out, err := git(t.RepoRoot, "worktree", "add", wt, "-b", t.BranchName, t.Base)
+	start := t.Base
+	if _, err := git(t.RepoRoot, "rev-parse", "--verify", "--quiet",
+		"refs/remotes/origin/"+t.Base); err == nil {
+		start = "refs/remotes/origin/" + t.Base
+	}
+	out, err := git(t.RepoRoot, "worktree", "add", wt, "-b", t.BranchName, start)
 	if err != nil {
 		os.RemoveAll(wt)
 		return "", fmt.Errorf("git worktree add: %v: %s", err, strings.TrimSpace(string(out)))
