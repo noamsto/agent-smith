@@ -1,6 +1,7 @@
 package applier
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -26,8 +27,8 @@ type Target struct {
 // "#section" anchor (the anchor is informational — passed to the editor, not used
 // to slice the file). Only the first '#' separates them.
 func splitArtifact(s string) (path, section string) {
-	if i := strings.IndexByte(s, '#'); i >= 0 {
-		return s[:i], s[i+1:]
+	if before, after, ok := strings.Cut(s, "#"); ok {
+		return before, after
 	}
 	return s, ""
 }
@@ -76,6 +77,64 @@ func repoRoot(path string) (string, error) {
 		return "", fmt.Errorf("not in a git repo (%s): %s", strings.TrimSpace(string(out)), path)
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+// resolveRealPath canonicalizes an artifact path through symlinks to its real
+// on-disk location. For a not-yet-existing file (an `add` target), it resolves
+// the deepest existing ancestor directory and rejoins the missing remainder, so a
+// symlinked parent is still followed. A broken symlink returns an error.
+func resolveRealPath(p string) (string, error) {
+	if _, err := os.Lstat(p); err == nil {
+		real, err := filepath.EvalSymlinks(p)
+		if err != nil {
+			return "", fmt.Errorf("resolveRealPath %s: %w", p, err)
+		}
+		return real, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", fmt.Errorf("resolveRealPath %s: %w", p, err)
+	}
+	dir := filepath.Dir(p)
+	rest := filepath.Base(p)
+	for {
+		if _, err := os.Stat(dir); err == nil {
+			break
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", fmt.Errorf("no existing ancestor for %s", p)
+		}
+		rest = filepath.Join(filepath.Base(dir), rest)
+		dir = parent
+	}
+	realDir, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return "", fmt.Errorf("resolveRealPath %s: %w", p, err)
+	}
+	return filepath.Join(realDir, rest), nil
+}
+
+// isImmutableStorePath reports whether p is inside the read-only Nix store.
+func isImmutableStorePath(p string) bool {
+	return strings.HasPrefix(p, "/nix/store/")
+}
+
+// mainRepoRoot returns the canonical repo root for a worktree root: for a linked
+// git worktree it is the main working tree that owns the shared .git; otherwise
+// worktreeRoot is returned unchanged. Detected by comparing the worktree's git-dir
+// to its git-common-dir (they differ only for a linked worktree). On any git
+// error it returns worktreeRoot unchanged (intentional silent fallback).
+func mainRepoRoot(worktreeRoot string) string {
+	gd, err1 := git(worktreeRoot, "rev-parse", "--path-format=absolute", "--git-dir")
+	cd, err2 := git(worktreeRoot, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	if err1 != nil || err2 != nil {
+		return worktreeRoot
+	}
+	gitDir := strings.TrimSpace(string(gd))
+	commonDir := strings.TrimSpace(string(cd))
+	if gitDir == commonDir || commonDir == "" {
+		return worktreeRoot
+	}
+	return filepath.Dir(commonDir)
 }
 
 func classifyOwner(root string) string {

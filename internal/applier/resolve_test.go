@@ -96,3 +96,104 @@ func TestResolveUnresolved(t *testing.T) {
 		t.Error("expected error for artifact outside any git repo")
 	}
 }
+
+func TestIsImmutableStorePath(t *testing.T) {
+	cases := []struct {
+		in   string
+		want bool
+	}{
+		{"/nix/store/abc-x/CLAUDE.md", true},
+		{"/home/u/repo/CLAUDE.md", false},
+		{"/nix/store", false},          // no trailing slash
+		{"/nix/storeroom/x.md", false}, // not the store
+		{"", false},
+	}
+	for _, c := range cases {
+		if got := isImmutableStorePath(c.in); got != c.want {
+			t.Errorf("isImmutableStorePath(%q) = %v, want %v", c.in, got, c.want)
+		}
+	}
+}
+
+func TestResolveRealPathSymlink(t *testing.T) {
+	repo := initRepo(t, "https://github.com/x/y.git") // seeds CLAUDE.md
+	link := filepath.Join(t.TempDir(), "link.md")
+	if err := os.Symlink(filepath.Join(repo, "CLAUDE.md"), link); err != nil {
+		t.Fatal(err)
+	}
+	got, err := resolveRealPath(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := filepath.EvalSymlinks(filepath.Join(repo, "CLAUDE.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Errorf("resolveRealPath(symlink) = %q, want %q", got, want)
+	}
+}
+
+func TestResolveRealPathAddTarget(t *testing.T) {
+	dir := t.TempDir() // exists; the file inside does not
+	target := filepath.Join(dir, "NEW.md")
+	got, err := resolveRealPath(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantDir, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != filepath.Join(wantDir, "NEW.md") {
+		t.Errorf("resolveRealPath(add-target) = %q, want %q", got, filepath.Join(wantDir, "NEW.md"))
+	}
+}
+
+func TestResolveRealPathDeeplyMissing(t *testing.T) {
+	dir := t.TempDir() // exists; a/b/c.md below it does not
+	got, err := resolveRealPath(filepath.Join(dir, "a", "b", "c.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantDir, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != filepath.Join(wantDir, "a", "b", "c.md") {
+		t.Errorf("resolveRealPath(deeply missing) = %q, want %q", got, filepath.Join(wantDir, "a", "b", "c.md"))
+	}
+}
+
+func TestResolveRealPathBrokenLink(t *testing.T) {
+	link := filepath.Join(t.TempDir(), "broken.md")
+	if err := os.Symlink("/no/such/target-xyz", link); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resolveRealPath(link); err == nil {
+		t.Error("expected error for a broken symlink")
+	}
+}
+
+func TestMainRepoRoot(t *testing.T) {
+	main := initRepo(t, "https://github.com/noamsto/nix-config.git")
+	if got := mainRepoRoot(main); got != main {
+		t.Errorf("mainRepoRoot(main checkout) = %q, want %q", got, main)
+	}
+	wt := filepath.Join(t.TempDir(), "wt")
+	if out, err := git(main, "worktree", "add", "-b", "wtbranch", wt); err != nil {
+		t.Fatalf("git worktree add: %v: %s", err, out)
+	}
+	got := mainRepoRoot(wt)
+	wantMain, err := filepath.EvalSymlinks(main)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotEval, err := filepath.EvalSymlinks(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotEval != wantMain {
+		t.Errorf("mainRepoRoot(worktree) = %q (eval %q), want main %q", got, gotEval, wantMain)
+	}
+}
