@@ -19,7 +19,11 @@ WITH events AS (
 )
 {{template "windowed_insert" .}}
 
--- retry: identical tool+input reappears within RetryWindowTurns turns.
+-- retry: an identical tool+input reappears within RetryWindowTurns turns AND at
+-- least one earlier identical call in that window errored (the tool_results JOIN).
+-- Requiring a prior error excludes intentional successful re-runs (verify loops,
+-- duplicate reads). NB: "turns" are rows in the combined assistant+user message
+-- sequence (~2 rows per tool round-trip), not tool-use hops.
 WITH events AS (
   SELECT DISTINCT
     md5(b.session_id || ':' || CAST(b.turn AS VARCHAR) || ':retry') AS incident_id,
@@ -33,6 +37,8 @@ WITH events AS (
     json_object('tool', b.tool, 'input', b.input_str) AS detail,
     b.turn
   FROM tool_uses a
+  JOIN tool_results ra
+    ON ra.session_id = a.session_id AND ra.tuid = a.tuid AND ra.is_error
   JOIN tool_uses b
     ON b.session_id = a.session_id
    AND b.tool = a.tool
