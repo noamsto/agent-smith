@@ -9,10 +9,11 @@
 - **Design:** approved. Top-level design: [`docs/specs/2026-06-01-agent-smith-design.md`](specs/2026-06-01-agent-smith-design.md).
 - **Built & merged to `main`:**
   - **Extractor (Track A)** — `cmd/extractor` + `internal/extractor`. Usage: [`docs/extractor.md`](extractor.md).
-  - **Analyst** — `cmd/analyst` + `internal/analyst` (the `cluster` + `assemble` binaries and the **Oracle** prompt). Spec: [`docs/superpowers/specs/2026-06-01-analyst-design.md`]. Plan: [`docs/superpowers/plans/2026-06-01-analyst.md`]. Usage: [`docs/analyst.md`](analyst.md). Plus: **Oracle big-cluster ingestion** — `analyst cluster` now session-stratified-samples incidents (`--max-incidents-per-cluster`, default 24; `0` = uncapped) and reports `total_incidents`, so high-signal clusters fit the Oracle. Spec: [`docs/superpowers/specs/2026-06-04-oracle-cluster-sampling-design.md`].
+  - **Analyst** — `cmd/analyst` + `internal/analyst` (the `cluster` + `assemble` binaries and the **Oracle** prompt). Spec: [`docs/superpowers/specs/2026-06-01-analyst-design.md`]. Plan: [`docs/superpowers/plans/2026-06-01-analyst.md`]. Usage: [`docs/analyst.md`](analyst.md). Plus: **Oracle big-cluster ingestion** — `analyst cluster` now session-stratified-samples incidents (`--max-incidents-per-cluster`, default 50; `0` = uncapped) and reports `total_incidents`, so high-signal clusters fit the Oracle. Spec: [`docs/superpowers/specs/2026-06-04-oracle-cluster-sampling-design.md`].
   - **Applier** — `cmd/applier` + `internal/applier` (the `prepare`/`open`/`submit` binary + the **Editor** prompt + verify gate). Usage: [`docs/applier.md`](applier.md). Runbook: `fixtures/applier/RUNBOOK.md`. Plus: **`suggest`** subcommand (side-effect-free dry-run index across all proposals — no edits/PRs); **symlink + worktree resolution** in `resolve.go` (`Resolve` EvalSymlinks the artifact and maps linked worktrees to their main repo). Resolution spec: [`docs/superpowers/specs/2026-06-03-applier-resolution-symlink-worktree.md`].
 - **Acceptance bar (skeleton-first) — MET end-to-end:** extractor flags whole-file large Reads as `inefficiency`; `analyst cluster` traces them (via candidate explosion) to the global `CLAUDE.md`; the Oracle chose `strengthen` (not duplicate `add`) in a real golden-eval run → `assemble` wrote the proposal + reason-log.
-- **Next (highest-value):** with Oracle big-cluster ingestion shipped, the chain can now run the Oracle on the high-signal artifacts end-to-end — the remaining gate to a **real end-to-end PR** is a live golden run of `analyst cluster` (capped) → Oracle dispatch → `assemble` → `applier prepare` on the top clusters. After that: **Track B** (freshness audit, spec §5) + the `/agent-smith` orchestration command.
+  - **`/agent-smith` plugin (2026-06-04)** — the repo is a self-marketplaced Claude Code plugin: `.claude-plugin/{plugin,marketplace}.json`, `commands/agent-smith.md` (bare = full autonomous loop with **draft** PRs; phases `mine`/`propose`/`apply [<id>]`/`status`), `agents/{oracle,editor}.md` (the prompts moved here as proper subagents; dead `go:embed` accessors removed), `applier submit --draft`. Spec: [`docs/superpowers/specs/2026-06-04-agent-smith-plugin-design.md`].
+- **Next:** review/merge [nix-config#2](https://github.com/noamsto/nix-config/pull/2) (the first real loop PR); then **nix-config wiring** ([#3](https://github.com/noamsto/agent-smith/issues/3)), **Track B** (spec §5), or the **HTML dashboard** ([#2](https://github.com/noamsto/agent-smith/issues/2)).
 
 ## Live-run findings (2026-06-03, real corpus)
 
@@ -45,7 +46,7 @@ repo owns the artifact. `deja-vu` (Phase 2) re-mines to confirm the glitch dropp
 | Applier `suggest` (dry-run index) | ✅ on `main` | `internal/applier/suggest.go`, `docs/applier.md` §Dry run |
 | Symlink + worktree resolution | ✅ on `main` | `internal/applier/resolve.go`, spec `2026-06-03-applier-resolution-*` |
 | Oracle big-cluster ingestion (sampling) | ✅ on `main` | `internal/analyst/cluster.go` (`--max-incidents-per-cluster`), spec `2026-06-04-oracle-cluster-sampling-design.md` |
-| `/agent-smith` command (orchestration) | ⬜ deferred | analyst+applier built; wire the full loop |
+| `/agent-smith` plugin (orchestration) | ✅ on `main` | `.claude-plugin/`, `commands/agent-smith.md`, `agents/{oracle,editor}.md`, spec `2026-06-04-agent-smith-plugin-design.md`; nix-config wiring = [#3](https://github.com/noamsto/agent-smith/issues/3) |
 
 ## How to build / test / run
 
@@ -95,9 +96,13 @@ a PreToolUse `Read` skeleton-guard hook (the `escalate` fix for the global-`CLAU
 inefficiency cluster), written by the Editor subagent into the Nix `--settings` overlay,
 verify-gated (ship-as-PR), PR link recorded in `reason-log/`. **Pending: human review +
 `nix build`/merge of that PR** (it's an experiment — watch per-`Read` friction and
-bypass-by-`limit`; 300-line threshold is the tuning knob). Next units: **Track B**
-(freshness audit, spec §5) or the **`/agent-smith`** orchestration command (wire the
-manual RUNBOOK loop — prepare→open→editor→verify→submit — into one command).
+bypass-by-`limit`; 300-line threshold is the tuning knob). The **`/agent-smith` plugin
+is built** (see Phase 1 status): the repo is now a self-marketplaced CC plugin whose
+bare command runs the whole loop autonomously and opens **draft** PRs. Next units:
+**nix-config wiring** ([#3](https://github.com/noamsto/agent-smith/issues/3) — binaries
+on PATH + `extraKnownMarketplaces`/`enabledPlugins`), **Track B** (freshness audit,
+spec §5), or the **HTML status dashboard**
+([#2](https://github.com/noamsto/agent-smith/issues/2)).
 Whichever you pick: brainstorm
 (`superpowers:brainstorming`) → spec → `superpowers:writing-plans` → build via
 `superpowers:subagent-driven-development`, in an isolated `wt` worktree. Do **not** code
