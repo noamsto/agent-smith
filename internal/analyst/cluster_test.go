@@ -163,6 +163,50 @@ func TestClusterSamplesStratifiedBySession(t *testing.T) {
 	}
 }
 
+func TestClusterSamplingRoundRobinDeepens(t *testing.T) {
+	// 5 sessions x 3 incidents (15 total), cap=7. Round-robin must give every
+	// session its best incident first (5 picks), then deepen — so no session may
+	// be sampled 3 times while another is sampled once. A naive "ORDER BY
+	// confidence DESC LIMIT 7" could pile both extra picks onto one session;
+	// round-robin caps every session at 2 until all sessions have 2.
+	ins := `INSERT INTO incidents
+	SELECT md5('i' || s || '_' || i), 's' || s, '/p', '2026-05-01T10:00:00Z',
+	       'inefficiency', '/g/CLAUDE.md',
+	       '["/g/CLAUDE.md"]'::JSON, '[{"turn":1}]'::JSON,
+	       CASE WHEN i = 0 THEN 'high' ELSE 'low' END, '{}'::JSON
+	FROM range(1,6) AS t1(s), range(0,3) AS t2(i);`
+	db := makeIncidentsDB(t, ins)
+
+	rows, err := clusterRows(context.Background(), db, 3, 7)
+	if err != nil {
+		t.Fatalf("clusterRows: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 cluster, got %d", len(rows))
+	}
+	var members []struct {
+		SessionID string `json:"session_id"`
+	}
+	if err := json.Unmarshal(rows[0].Incidents, &members); err != nil {
+		t.Fatalf("unmarshal incidents: %v", err)
+	}
+	if len(members) != 7 {
+		t.Fatalf("sampled %d incidents, want 7 (the cap)", len(members))
+	}
+	perSession := map[string]int{}
+	for _, m := range members {
+		perSession[m.SessionID]++
+	}
+	if len(perSession) != 5 {
+		t.Errorf("covered %d sessions, want all 5 before deepening", len(perSession))
+	}
+	for sid, n := range perSession {
+		if n > 2 {
+			t.Errorf("session %s sampled %d times; round-robin must spread to all sessions before taking a 3rd from any", sid, n)
+		}
+	}
+}
+
 func TestClusterUncappedKeepsAllIncidents(t *testing.T) {
 	// 3 sessions x 2 incidents = 6 total. Uncapped (0) keeps all 6.
 	ins := `INSERT INTO incidents

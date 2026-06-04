@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 )
 
@@ -37,7 +38,7 @@ type clusterRow struct {
 func clusterSQL(minSessions, maxIncidents int) string {
 	capN := maxIncidents
 	if capN <= 0 {
-		capN = 1<<31 - 1 // uncapped
+		capN = math.MaxInt32 // uncapped
 	}
 	return fmt.Sprintf(`
 WITH exploded AS (
@@ -48,7 +49,7 @@ WITH exploded AS (
 gated AS (
   SELECT artifact, signal_type,
          count(DISTINCT session_id) AS distinct_sessions,
-         count(*) AS total_incidents
+         count(DISTINCT incident_id) AS total_incidents
   FROM exploded
   GROUP BY artifact, signal_type
   HAVING count(DISTINCT session_id) >= %d
