@@ -32,8 +32,13 @@ type clusterRow struct {
 // clusterSQL explodes each incident across its candidate artifacts, groups by
 // (artifact, signal_type), keeps groups with >= minSessions distinct sessions,
 // and aggregates the member incidents into a JSON array per cluster.
+// Incidents are sampled using session-stratified round-robin up to maxIncidents;
+// maxIncidents <= 0 means uncapped.
 func clusterSQL(minSessions, maxIncidents int) string {
-	_ = maxIncidents // used in Task 2 (session-stratified sampling)
+	capN := maxIncidents
+	if capN <= 0 {
+		capN = 1<<31 - 1 // uncapped
+	}
 	return fmt.Sprintf(`
 WITH exploded AS (
   SELECT incident_id, session_id, ts, confidence, detail, "window", signal_type,
@@ -47,18 +52,40 @@ gated AS (
   FROM exploded
   GROUP BY artifact, signal_type
   HAVING count(DISTINCT session_id) >= %d
+),
+ranked AS (
+  SELECT e.*,
+         row_number() OVER (
+           PARTITION BY e.artifact, e.signal_type, e.session_id
+           ORDER BY (CASE e.confidence WHEN 'high' THEN 3 WHEN 'medium' THEN 2 ELSE 1 END) DESC,
+                    e.ts, e.incident_id
+         ) AS rn_in_session
+  FROM exploded e
+  JOIN gated g USING (artifact, signal_type)
+),
+sampled AS (
+  SELECT *,
+         row_number() OVER (
+           PARTITION BY artifact, signal_type
+           ORDER BY rn_in_session ASC,
+                    (CASE confidence WHEN 'high' THEN 3 WHEN 'medium' THEN 2 ELSE 1 END) DESC,
+                    ts, incident_id
+         ) AS pick
+  FROM ranked
 )
-SELECT e.artifact,
-       e.signal_type,
+SELECT s.artifact,
+       s.signal_type,
        g.distinct_sessions,
        g.total_incidents,
        to_json(list(struct_pack(
-         incident_id := e.incident_id, session_id := e.session_id, ts := e.ts,
-         confidence := e.confidence, detail := e.detail, "window" := e."window"))) AS incidents
-FROM exploded e
+         incident_id := s.incident_id, session_id := s.session_id, ts := s.ts,
+         confidence := s.confidence, detail := s.detail, "window" := s."window")
+         ORDER BY s.pick)) AS incidents
+FROM sampled s
 JOIN gated g USING (artifact, signal_type)
-GROUP BY e.artifact, e.signal_type, g.distinct_sessions, g.total_incidents
-ORDER BY g.distinct_sessions DESC, e.artifact, e.signal_type;`, minSessions)
+WHERE s.pick <= %d
+GROUP BY s.artifact, s.signal_type, g.distinct_sessions, g.total_incidents
+ORDER BY g.distinct_sessions DESC, s.artifact, s.signal_type;`, minSessions, capN)
 }
 
 // clusterRows runs the clustering query against db and returns the raw rows.
