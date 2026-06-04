@@ -25,6 +25,12 @@ nix develop -c jq '.[] | {cluster_id, distinct_sessions, artifact_exists,
   has_rule: (.artifact_content | test("skeleton-first"))}' /tmp/clusters.json
 ```
 
+> The golden-eval cluster has 3 incidents (one per session), so the default
+> `--max-incidents-per-cluster 24` is a no-op here. On the real corpus that flag
+> caps each cluster to a session-stratified sample (≤24 incidents) so the Oracle
+> can ingest high-signal clusters; `total_incidents` still reports the true count.
+> Pass `--max-incidents-per-cluster 0` to disable the cap.
+
 Expected: one cluster, `inefficiency::.../fixtures/analyst/CLAUDE.md`,
 `distinct_sessions: 3`, `artifact_exists: true`, `has_rule: true`.
 
