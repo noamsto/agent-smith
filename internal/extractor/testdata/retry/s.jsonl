@@ -1,0 +1,8 @@
+{"type":"assistant","sessionId":"r1","uuid":"a1","timestamp":"2026-05-04T10:00:00Z","cwd":"/home/noams/p","message":{"role":"assistant","content":[{"type":"tool_use","id":"y1","name":"Bash","input":{"command":"echo hi"}}]}}
+{"type":"user","sessionId":"r1","uuid":"u1","timestamp":"2026-05-04T10:00:01Z","cwd":"/home/noams/p","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"y1","content":"hi"}]}}
+{"type":"assistant","sessionId":"r1","uuid":"a2","timestamp":"2026-05-04T10:00:05Z","cwd":"/home/noams/p","message":{"role":"assistant","content":[{"type":"tool_use","id":"y2","name":"Bash","input":{"command":"echo hi"}}]}}
+{"type":"user","sessionId":"r1","uuid":"u2","timestamp":"2026-05-04T10:00:06Z","cwd":"/home/noams/p","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"y2","content":"hi"}]}}
+{"type":"assistant","sessionId":"r2","uuid":"b1","timestamp":"2026-05-04T11:00:00Z","cwd":"/home/noams/p","message":{"role":"assistant","content":[{"type":"tool_use","id":"z1","name":"Bash","input":{"command":"cat /nope"}}]}}
+{"type":"user","sessionId":"r2","uuid":"v1","timestamp":"2026-05-04T11:00:01Z","cwd":"/home/noams/p","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"z1","is_error":true,"content":"No such file"}]}}
+{"type":"assistant","sessionId":"r2","uuid":"b2","timestamp":"2026-05-04T11:00:05Z","cwd":"/home/noams/p","message":{"role":"assistant","content":[{"type":"tool_use","id":"z2","name":"Bash","input":{"command":"cat /nope"}}]}}
+{"type":"user","sessionId":"r2","uuid":"v2","timestamp":"2026-05-04T11:00:06Z","cwd":"/home/noams/p","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"z2","is_error":true,"content":"No such file"}]}}

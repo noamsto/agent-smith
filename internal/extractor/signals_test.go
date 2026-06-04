@@ -30,6 +30,19 @@ func TestUserCorrection(t *testing.T) {
 	}
 }
 
+func TestRetryRequiresPriorError(t *testing.T) {
+	cfg := testConfig(t, "retry", "tool_error")
+	if err := Run(context.Background(), cfg); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	c := countBySignal(t, cfg.OutDB)
+	// r1 repeats an identical SUCCESSFUL Bash call (verify-loop) -> NOT a retry.
+	// r2 repeats an identical call whose first attempt errored -> exactly 1 retry.
+	if c["retry"] != 1 {
+		t.Errorf("expected exactly 1 retry (only the error-driven repeat), got %d", c["retry"])
+	}
+}
+
 func TestToolErrorAndRetry(t *testing.T) {
 	cfg := testConfig(t, "tool_error", "tool_error")
 	if err := Run(context.Background(), cfg); err != nil {
