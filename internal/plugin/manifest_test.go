@@ -63,3 +63,9 @@ func TestAgentsHaveFrontmatter(t *testing.T) {
 		}
 	}
 }
+
+func TestCommandExists(t *testing.T) {
+	if len(repoFile(t, "commands/agent-smith.md")) == 0 {
+		t.Error("commands/agent-smith.md is empty")
+	}
+}
