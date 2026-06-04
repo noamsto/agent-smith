@@ -65,6 +65,50 @@ func lastLine(s string) string {
 // (e.g. "feat(scope): ..."), so commitMessage must not prepend a second type.
 var ccSubjectRe = regexp.MustCompile(`^[a-z]+(\([^)]*\))?!?: `)
 
+// doublePrefixRe matches a title that starts with TWO conventional-commit
+// prefixes (e.g. "chore: feat(scope): ..."), the malformed shape nix-config#2
+// shipped with. Preflight's backstop should commitMessage ever regress.
+var doublePrefixRe = regexp.MustCompile(`^[a-z]+(\([^)]*\))?!?: [a-z]+(\([^)]*\))?!?: `)
+
+// preflight validates the assembled PR before anything is pushed: a sane title,
+// exactly one commit over the (remote-tracking) base, and no files beyond what
+// the editor reported. Failing any check aborts submit instead of opening a
+// malformed PR.
+func preflight(run runner, t Target, wt, title string, ed EditorResult) error {
+	if doublePrefixRe.MatchString(title) {
+		return fmt.Errorf("preflight: doubled conventional-commit prefix in title %q", title)
+	}
+	baseRef := t.Base
+	if _, err := run(wt, "git", "rev-parse", "--verify", "--quiet",
+		"refs/remotes/origin/"+t.Base); err == nil {
+		baseRef = "refs/remotes/origin/" + t.Base
+	}
+	out, err := run(wt, "git", "rev-list", "--count", baseRef+"..HEAD")
+	if err != nil {
+		return fmt.Errorf("preflight: rev-list: %w", err)
+	}
+	if n := strings.TrimSpace(string(out)); n != "1" {
+		return fmt.Errorf("preflight: branch has %s commits over %s, want exactly 1 (unpushed local commits leaking in?)", n, baseRef)
+	}
+	if len(ed.FilesChanged) == 0 {
+		return nil // editor reported no file list; nothing to verify against
+	}
+	out, err = run(wt, "git", "diff", "--name-only", baseRef+"..HEAD")
+	if err != nil {
+		return fmt.Errorf("preflight: diff: %w", err)
+	}
+	allowed := make(map[string]bool, len(ed.FilesChanged))
+	for _, f := range ed.FilesChanged {
+		allowed[f] = true
+	}
+	for _, f := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if f != "" && !allowed[f] {
+			return fmt.Errorf("preflight: diff touches %q, which the editor did not report in files_changed %v", f, ed.FilesChanged)
+		}
+	}
+	return nil
+}
+
 // commitMessage builds the conventional-commit subject and body for a proposal.
 func commitMessage(p analyst.Proposal, ed EditorResult) (title, body string) {
 	summary := ed.Summary
@@ -106,6 +150,9 @@ func Submit(run runner, t Target, wt string, p analyst.Proposal, ed EditorResult
 	title, body := commitMessage(p, ed)
 	if _, err := run(wt, "git", "commit", "-m", title, "-m", body); err != nil {
 		return "", false, fmt.Errorf("git commit: %w", err)
+	}
+	if err := preflight(run, t, wt, title, ed); err != nil {
+		return "", false, err
 	}
 	if _, err := run(wt, "git", "push", "-u", "origin", t.BranchName); err != nil {
 		return "", false, fmt.Errorf("git push: %w", err)
