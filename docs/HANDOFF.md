@@ -89,14 +89,15 @@ Applier runbook (editor + verify dispatch): `fixtures/applier/RUNBOOK.md`.
 
 ## First move for a new session
 
-The extractor→analyst→applier loop is built and the Oracle now ingests big clusters
-(session-stratified sampling) on a verified golden run; the `retry` signal is de-noised.
-The remaining piece of that golden run is to **land a real PR**: take the Oracle's
-`inefficiency`/global-`CLAUDE.md` proposal (a PreToolUse Read-guard hook, `escalate`)
-through `assemble` → `applier prepare`/`submit` against `nix-config` — the first
-end-to-end PR. (NB: it's an `escalate-out-of-instructions` hook proposal, so the Editor
-subagent writes a hook in the Nix `--settings` overlay, not prose.) Alternatives:
-**Track B** (freshness audit, spec §5) or the **`/agent-smith`** orchestration command.
+The full extractor→analyst→Oracle→applier loop is **proven end-to-end**: the first
+real PR is open — [noamsto/nix-config#2](https://github.com/noamsto/nix-config/pull/2),
+a PreToolUse `Read` skeleton-guard hook (the `escalate` fix for the global-`CLAUDE.md`
+inefficiency cluster), written by the Editor subagent into the Nix `--settings` overlay,
+verify-gated (ship-as-PR), PR link recorded in `reason-log/`. **Pending: human review +
+`nix build`/merge of that PR** (it's an experiment — watch per-`Read` friction and
+bypass-by-`limit`; 300-line threshold is the tuning knob). Next units: **Track B**
+(freshness audit, spec §5) or the **`/agent-smith`** orchestration command (wire the
+manual RUNBOOK loop — prepare→open→editor→verify→submit — into one command).
 Whichever you pick: brainstorm
 (`superpowers:brainstorming`) → spec → `superpowers:writing-plans` → build via
 `superpowers:subagent-driven-development`, in an isolated `wt` worktree. Do **not** code
