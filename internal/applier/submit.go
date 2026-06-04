@@ -1,7 +1,6 @@
 package applier
 
 import (
-	_ "embed"
 	"encoding/json"
 	"fmt"
 	"os/exec"
@@ -9,13 +8,6 @@ import (
 
 	"github.com/noamsto/agent-smith/internal/analyst"
 )
-
-//go:embed editor.md
-var editorMD string
-
-// EditorPrompt returns the Editor subagent prompt (the proposal → edit contract),
-// for inlining into a dispatch by the runbook/orchestrator.
-func EditorPrompt() string { return editorMD }
 
 // runner runs a command in dir and returns combined output. Injected so tests run
 // offline against a fake.
@@ -89,7 +81,7 @@ func commitMessage(p analyst.Proposal, ed EditorResult) (title, body string) {
 // records the PR link in the reason-log. It returns skipped=true (no error) when
 // the editor declined or produced no diff. Never commits to the default branch.
 // wt is the path to the git worktree checkout (distinct from t.RepoRoot).
-func Submit(run runner, t Target, wt string, p analyst.Proposal, ed EditorResult, reasonLogDir string) (prURL string, skipped bool, err error) {
+func Submit(run runner, t Target, wt string, p analyst.Proposal, ed EditorResult, reasonLogDir string, draft bool) (prURL string, skipped bool, err error) {
 	if !ed.Applied {
 		return "", true, nil
 	}
@@ -110,8 +102,12 @@ func Submit(run runner, t Target, wt string, p analyst.Proposal, ed EditorResult
 	if _, err := run(wt, "git", "push", "-u", "origin", t.BranchName); err != nil {
 		return "", false, fmt.Errorf("git push: %w", err)
 	}
-	out, err := run(wt, "gh", "pr", "create", "--assignee", "@me",
-		"--title", title, "--body", body, "--head", t.BranchName, "--base", t.Base)
+	ghArgs := []string{"pr", "create", "--assignee", "@me",
+		"--title", title, "--body", body, "--head", t.BranchName, "--base", t.Base}
+	if draft {
+		ghArgs = append(ghArgs, "--draft")
+	}
+	out, err := run(wt, "gh", ghArgs...)
 	if err != nil {
 		return "", false, fmt.Errorf("gh pr create: %w", err)
 	}

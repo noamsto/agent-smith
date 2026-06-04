@@ -56,7 +56,7 @@ func TestSubmitCreatesPR(t *testing.T) {
 	tg := Target{RepoRoot: "/r", BranchName: "docs/agent-smith-glitch-skeleton", Base: "main"}
 	ed := EditorResult{Applied: true, FilesChanged: []string{"CLAUDE.md"}, Summary: "raise skeleton-first rule"}
 
-	url, skipped, err := Submit(f.run, tg, "/wt", sampleProposal(), ed, dir)
+	url, skipped, err := Submit(f.run, tg, "/wt", sampleProposal(), ed, dir, false)
 	if err != nil || skipped {
 		t.Fatalf("Submit: url=%q skipped=%v err=%v", url, skipped, err)
 	}
@@ -91,7 +91,7 @@ func TestSubmitCreatesPR(t *testing.T) {
 func TestSubmitSkipsWhenEditorDeclined(t *testing.T) {
 	f := &fakeRunner{}
 	_, skipped, err := Submit(f.run, Target{}, "/wt", sampleProposal(),
-		EditorResult{Applied: false, Reason: "content drifted"}, t.TempDir())
+		EditorResult{Applied: false, Reason: "content drifted"}, t.TempDir(), false)
 	if err != nil || !skipped {
 		t.Fatalf("expected skip, got skipped=%v err=%v", skipped, err)
 	}
@@ -103,7 +103,7 @@ func TestSubmitSkipsWhenEditorDeclined(t *testing.T) {
 func TestSubmitSkipsWhenNoDiff(t *testing.T) {
 	f := &fakeRunner{status: ""} // editor applied but produced no change
 	_, skipped, err := Submit(f.run, Target{BranchName: "b", Base: "main"}, "/wt",
-		sampleProposal(), EditorResult{Applied: true}, t.TempDir())
+		sampleProposal(), EditorResult{Applied: true}, t.TempDir(), false)
 	if err != nil || !skipped {
 		t.Fatalf("expected skip on empty diff, got skipped=%v err=%v", skipped, err)
 	}
@@ -121,7 +121,7 @@ func TestSubmitErrorPaths(t *testing.T) {
 			f := &fakeRunner{status: " M f", prURL: "https://github.com/x/y/pull/9", failVerb: verb}
 			tg := Target{BranchName: "docs/agent-smith-glitch-skeleton", Base: "main"}
 			_, skipped, err := Submit(f.run, tg, "/wt", sampleProposal(),
-				EditorResult{Applied: true, Summary: "s"}, t.TempDir())
+				EditorResult{Applied: true, Summary: "s"}, t.TempDir(), false)
 			if err == nil {
 				t.Fatalf("expected error when %q fails", verb)
 			}
@@ -144,7 +144,7 @@ func TestSubmitAppendPRLinkFailure(t *testing.T) {
 	f := &fakeRunner{status: " M f", prURL: "https://github.com/x/y/pull/9"}
 	tg := Target{BranchName: "docs/agent-smith-glitch-skeleton", Base: "main"}
 	url, skipped, err := Submit(f.run, tg, "/wt", sampleProposal(),
-		EditorResult{Applied: true, Summary: "s"}, t.TempDir())
+		EditorResult{Applied: true, Summary: "s"}, t.TempDir(), false)
 	if err == nil {
 		t.Fatal("expected error when reason-log entry is missing")
 	}
@@ -161,7 +161,7 @@ func TestSubmitNonURLGhOutput(t *testing.T) {
 	f := &fakeRunner{status: " M f", prURL: ""}
 	tg := Target{BranchName: "docs/agent-smith-glitch-skeleton", Base: "main"}
 	url, skipped, err := Submit(f.run, tg, "/wt", sampleProposal(),
-		EditorResult{Applied: true, Summary: "s"}, t.TempDir())
+		EditorResult{Applied: true, Summary: "s"}, t.TempDir(), false)
 	if err == nil {
 		t.Fatal("expected error when gh output is not a URL")
 	}
@@ -193,5 +193,28 @@ func TestParseEditorResultToleratesFences(t *testing.T) {
 	}
 	if !ed.Applied || ed.Summary != "s" {
 		t.Errorf("got %+v", ed)
+	}
+}
+
+func TestSubmitDraftFlag(t *testing.T) {
+	// draft=true adds --draft to gh pr create; draft=false omits it.
+	for _, draft := range []bool{true, false} {
+		dir := t.TempDir()
+		rlPath := filepath.Join(dir, "2026-06-01-glitch-skeleton.md")
+		if err := os.WriteFile(rlPath, []byte(sampleEntry), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		f := &fakeRunner{status: " M CLAUDE.md", prURL: "https://github.com/x/y/pull/9"}
+		tg := Target{RepoRoot: "/r", BranchName: "docs/agent-smith-glitch-skeleton", Base: "main"}
+		ed := EditorResult{Applied: true, FilesChanged: []string{"CLAUDE.md"}, Summary: "x"}
+
+		if _, _, err := Submit(f.run, tg, "/wt", sampleProposal(), ed, dir, draft); err != nil {
+			t.Fatalf("draft=%v: Submit: %v", draft, err)
+		}
+		last := f.calls[len(f.calls)-1]
+		joined := strings.Join(last, " ")
+		if got := strings.Contains(joined, "--draft"); got != draft {
+			t.Errorf("draft=%v: --draft present=%v; gh args=%q", draft, got, joined)
+		}
 	}
 }

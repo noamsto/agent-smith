@@ -99,6 +99,7 @@ func runSubmit(args []string) {
 	wt := fs.String("worktree", "", "worktree path returned by `open`")
 	reasonLog := fs.String("reason-log-dir", "reason-log", "reason-log directory")
 	editorResult := fs.String("editor-result", "", "JSON file with the editor subagent's result")
+	draft := fs.Bool("draft", false, "open the PR as a draft")
 	_ = fs.Parse(args)
 
 	if *id == "" {
@@ -135,7 +136,7 @@ func runSubmit(args []string) {
 		}
 	}()
 
-	url, skipped, err := applier.Submit(applier.Run, tg, *wt, prop, ed, *reasonLog)
+	url, skipped, err := applier.Submit(applier.Run, tg, *wt, prop, ed, *reasonLog, *draft)
 	if err != nil {
 		_ = applier.Drop(tg.RepoRoot, *wt) // defer below is skipped by os.Exit in fatal()
 		fatal(err)

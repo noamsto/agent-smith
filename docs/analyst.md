@@ -11,7 +11,7 @@ incidents.db ──► analyst cluster ──► clusters.json ──► (Oracle
 proposals.json + reason-log/*.md ◄── analyst assemble ◄──────┘
 ```
 
-The two binaries are deterministic; the Oracle (`internal/analyst/oracle.md`) is a
+The two binaries are deterministic; the Oracle (`agents/oracle.md`) is a
 pure `cluster → proposal JSON` completion dispatched once per cluster. Phase-1 glue
 is the eval runbook (`fixtures/analyst/RUNBOOK.md`); the `/agent-smith` command is
 deferred.

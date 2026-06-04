@@ -3,6 +3,10 @@
 Verifies the analyst traces recurring whole-file reads to the EXISTING reading-code
 rule and chooses `strengthen` (or `escalate-out-of-instructions`), never `add`.
 
+> **Superseded by `/agent-smith`.** The full loop is now automated by the
+> `/agent-smith` plugin command (`commands/agent-smith.md`); keep this RUNBOOK as the
+> golden-eval recipe and for debugging individual steps.
+
 ## Deterministic prep (automatable — run these and check the cluster)
 
 ```bash
@@ -36,7 +40,7 @@ Expected: one cluster, `inefficiency::.../fixtures/analyst/CLAUDE.md`,
 
 ## Oracle step (on-demand, manual — dispatch a real subagent)
 
-Dispatch a subagent with the prompt from `internal/analyst/oracle.md` (inline its
+Dispatch a subagent with the prompt from `agents/oracle.md` (inline its
 content), passing the single object from `/tmp/clusters.json` as the input cluster.
 Save its JSON output to `/tmp/proposals-in/p1.json`.
 

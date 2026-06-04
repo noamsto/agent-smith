@@ -58,7 +58,7 @@ nix build .#default               # packaged binaries (result/bin/{extractor,ana
 # Track A end-to-end:
 go run ./cmd/extractor --out incidents.db                  # mine the corpus
 go run ./cmd/analyst cluster --db incidents.db --out clusters.json
-#   → dispatch the Oracle (internal/analyst/oracle.md) per cluster → proposal JSONs
+#   → dispatch the Oracle (agents/oracle.md) per cluster → proposal JSONs
 go run ./cmd/analyst assemble --proposals-dir proposals --out proposals.json --reason-log-dir reason-log
 
 # Applier (Phase 1, consumes proposals.json):

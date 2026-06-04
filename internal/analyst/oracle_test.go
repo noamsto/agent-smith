@@ -1,11 +1,19 @@
 package analyst
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
-func TestOraclePromptEmbedsTheGuard(t *testing.T) {
-	p := OraclePrompt()
+func TestOracleAgentEmbedsTheGuard(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", "agents", "oracle.md"))
+	if err != nil {
+		t.Fatalf("read agents/oracle.md: %v", err)
+	}
+	p := string(b)
 	if len(p) < 500 {
-		t.Fatalf("oracle prompt looks too short (%d bytes) — embed failed?", len(p))
+		t.Fatalf("oracle prompt looks too short (%d bytes)", len(p))
 	}
 	for _, must := range []string{
 		"MUST NOT choose `add`", // the acceptance-bar guard
