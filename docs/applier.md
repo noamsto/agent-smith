@@ -13,7 +13,7 @@ proposals.json ─► applier prepare ─► apply-plan.json ─► (per ready e
 ```
 
 The binary (`prepare`/`open`/`submit`) is deterministic; the **editor**
-(`internal/applier/editor.md`) and **verify** steps are Claude Code subagent
+(`agents/editor.md`) and **verify** steps are Claude Code subagent
 dispatches driven by `fixtures/applier/RUNBOOK.md`. Every edit happens in an
 isolated `git worktree`, so live checkouts are never touched. Phase 1 always opens
 a PR — never an auto-commit.
