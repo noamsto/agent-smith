@@ -15,8 +15,12 @@ proposals.json ─► applier prepare ─► apply-plan.json ─► (per ready e
 The binary (`prepare`/`open`/`submit`) is deterministic; the **editor**
 (`agents/editor.md`) and **verify** steps are Claude Code subagent
 dispatches driven by `fixtures/applier/RUNBOOK.md`. Every edit happens in an
-isolated `git worktree`, so live checkouts are never touched. Phase 1 always opens
-a PR — never an auto-commit.
+isolated `git worktree` (branched from `origin/<base>` when that ref exists, so
+unpushed local commits never leak into a PR), so live checkouts are never touched.
+Phase 1 always opens a PR — never an auto-commit. Before pushing, `submit` runs a
+deterministic **preflight**: a single-prefix title lint, exactly one commit over
+the base, and no diff files beyond the editor's `files_changed` — failing any
+check aborts instead of opening a malformed PR.
 
 ## Commands
 

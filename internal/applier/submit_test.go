@@ -13,10 +13,12 @@ import (
 
 // fakeRunner records calls and returns canned output keyed by the command verb.
 type fakeRunner struct {
-	calls    [][]string
-	status   string // git status --porcelain stdout
-	prURL    string // gh pr create stdout
-	failVerb string // "add"|"status"|"commit"|"push"|"gh" → that command returns an error
+	calls        [][]string
+	status       string // git status --porcelain stdout
+	prURL        string // gh pr create stdout
+	failVerb     string // "add"|"status"|"commit"|"push"|"gh" → that command returns an error
+	revListCount string // git rev-list --count stdout ("" = "1")
+	diffNames    string // git diff --name-only stdout ("" = no files to verify)
 }
 
 func (f *fakeRunner) run(dir, name string, args ...string) ([]byte, error) {
@@ -30,6 +32,16 @@ func (f *fakeRunner) run(dir, name string, args ...string) ([]byte, error) {
 	}
 	if name == "git" && len(args) > 0 && args[0] == "status" {
 		return []byte(f.status), nil
+	}
+	if name == "git" && len(args) > 0 && args[0] == "rev-list" {
+		n := f.revListCount
+		if n == "" {
+			n = "1"
+		}
+		return []byte(n + "\n"), nil
+	}
+	if name == "git" && len(args) > 0 && args[0] == "diff" {
+		return []byte(f.diffNames), nil
 	}
 	if name == "gh" {
 		return []byte("Creating pull request...\n" + f.prURL + "\n"), nil
@@ -63,13 +75,68 @@ func TestCommitMessageNoDoublePrefix(t *testing.T) {
 	}
 }
 
+func TestSubmitPreflightRejectsExtraCommits(t *testing.T) {
+	// More than one commit over origin/<base> means unpushed local commits are
+	// leaking into the PR (how nix-config#2 picked up an unrelated commit).
+	// Preflight must abort BEFORE anything is pushed.
+	f := &fakeRunner{status: " M CLAUDE.md", revListCount: "3"}
+	tg := Target{BranchName: "docs/agent-smith-glitch-skeleton", Base: "main"}
+	_, skipped, err := Submit(f.run, tg, "/wt", sampleProposal(),
+		EditorResult{Applied: true, Summary: "s"}, t.TempDir(), false)
+	if err == nil || skipped {
+		t.Fatalf("expected preflight error, got skipped=%v err=%v", skipped, err)
+	}
+	if !strings.Contains(err.Error(), "preflight") {
+		t.Errorf("error %q should mention preflight", err)
+	}
+	for _, c := range f.calls {
+		if (c[0] == "git" && c[1] == "push") || c[0] == "gh" {
+			t.Errorf("nothing must be pushed after a preflight failure; saw %v", c)
+		}
+	}
+}
+
+func TestSubmitPreflightRejectsSurpriseFiles(t *testing.T) {
+	// The branch diff must not touch files the editor didn't report.
+	f := &fakeRunner{status: " M CLAUDE.md", diffNames: "CLAUDE.md\nUNRELATED.txt\n"}
+	tg := Target{BranchName: "docs/agent-smith-glitch-skeleton", Base: "main"}
+	_, skipped, err := Submit(f.run, tg, "/wt", sampleProposal(),
+		EditorResult{Applied: true, Summary: "s", FilesChanged: []string{"CLAUDE.md"}}, t.TempDir(), false)
+	if err == nil || skipped {
+		t.Fatalf("expected preflight error, got skipped=%v err=%v", skipped, err)
+	}
+	if !strings.Contains(err.Error(), "UNRELATED.txt") {
+		t.Errorf("error %q should name the surprise file", err)
+	}
+	for _, c := range f.calls {
+		if (c[0] == "git" && c[1] == "push") || c[0] == "gh" {
+			t.Errorf("nothing must be pushed after a preflight failure; saw %v", c)
+		}
+	}
+}
+
+func TestDoublePrefixLint(t *testing.T) {
+	// The preflight title lint is the backstop should commitMessage regress.
+	for title, double := range map[string]bool{
+		"chore: feat(claude-code): enforce skeleton-first reads": true,
+		"docs: fix: something":                       true,
+		"feat(claude-code): enforce skeleton-first":  false,
+		"docs: raise skeleton-first rule":            false,
+		"docs: update the chore: of the day section": false, // prefix-like text mid-sentence is fine
+	} {
+		if got := doublePrefixRe.MatchString(title); got != double {
+			t.Errorf("doublePrefixRe(%q) = %v, want %v", title, got, double)
+		}
+	}
+}
+
 func TestSubmitCreatesPR(t *testing.T) {
 	dir := t.TempDir()
 	rlPath := filepath.Join(dir, "2026-06-01-glitch-skeleton.md")
 	if err := os.WriteFile(rlPath, []byte(sampleEntry), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	f := &fakeRunner{status: " M CLAUDE.md", prURL: "https://github.com/x/y/pull/9"}
+	f := &fakeRunner{status: " M CLAUDE.md", prURL: "https://github.com/x/y/pull/9", diffNames: "CLAUDE.md\n"}
 	tg := Target{RepoRoot: "/r", BranchName: "docs/agent-smith-glitch-skeleton", Base: "main"}
 	ed := EditorResult{Applied: true, FilesChanged: []string{"CLAUDE.md"}, Summary: "raise skeleton-first rule"}
 
@@ -80,12 +147,14 @@ func TestSubmitCreatesPR(t *testing.T) {
 	if url != "https://github.com/x/y/pull/9" {
 		t.Errorf("PR URL = %q", url)
 	}
-	// Verb sequence: add, status, commit, push, then gh pr create.
+	// Verb sequence: add, status, commit, preflight (rev-parse/rev-list/diff),
+	// push, then gh pr create.
 	verbs := []string{}
 	for _, c := range f.calls {
 		verbs = append(verbs, c[0]+" "+c[1])
 	}
-	want := []string{"git add", "git status", "git commit", "git push", "gh pr"}
+	want := []string{"git add", "git status", "git commit",
+		"git rev-parse", "git rev-list", "git diff", "git push", "gh pr"}
 	if !slices.Equal(verbs, want) {
 		t.Errorf("call sequence = %v, want %v", verbs, want)
 	}
