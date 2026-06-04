@@ -176,6 +176,8 @@ func Resolve(p analyst.Proposal) (Target, error) {
 	}
 	mainRoot := mainRepoRoot(worktreeRoot)
 	file := real
+	// mainRepoRoot returns worktreeRoot verbatim for a main checkout, so this
+	// inequality fires only for a linked worktree (no path-normalization race).
 	if mainRoot != worktreeRoot {
 		rel, rerr := filepath.Rel(worktreeRoot, real)
 		if rerr != nil {
