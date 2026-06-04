@@ -12,7 +12,7 @@ A JSON cluster:
 - `artifact` — path of the implicated instruction file.
 - `artifact_content` — that file's CURRENT text (may be null if the file is missing).
 - `distinct_sessions` — how many distinct sessions exhibited this (≥3).
-- `total_incidents` — how many times this glitch recurred in total across those sessions.
+- `total_incidents` — the total number of incidents in THIS cluster (this artifact + signal, across those sessions) that `incidents[]` is sampled from.
 - `incidents[]` — a **representative, session-stratified sample** of `total_incidents` occurrences (at most one per distinct session before deepening), each with `session_id`, `ts`, `confidence`, `detail`, and `window` (a transcript slice). It is a sample, not the full set: the absence of a specific example is NOT evidence it didn't happen — reason from the recurring pattern and the true counts above. Reason ONLY from these windows and `artifact_content`. Do not ask for or assume access to anything else.
 
 ## Procedure
