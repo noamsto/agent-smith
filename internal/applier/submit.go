@@ -1,7 +1,6 @@
 package applier
 
 import (
-	_ "embed"
 	"encoding/json"
 	"fmt"
 	"os/exec"
@@ -9,13 +8,6 @@ import (
 
 	"github.com/noamsto/agent-smith/internal/analyst"
 )
-
-//go:embed editor.md
-var editorMD string
-
-// EditorPrompt returns the Editor subagent prompt (the proposal → edit contract),
-// for inlining into a dispatch by the runbook/orchestrator.
-func EditorPrompt() string { return editorMD }
 
 // runner runs a command in dir and returns combined output. Injected so tests run
 // offline against a fake.
