@@ -18,7 +18,8 @@
 
 A full run (`extractor` → `analyst cluster` → `applier prepare`/`suggest`) on the live corpus: **5,386 incidents → 36 clusters → 16 ready / 20 skipped** (before the resolution fix; the global `~/.claude/CLAUDE.md` now resolves to `nix-config`). Open items, in priority order:
 
-1. **✅ Oracle big-cluster ingestion — RESOLVED (2026-06-04).** Root cause was incident *count* (≈3 KB/window × thousands), not window size. `analyst cluster` now does **session-stratified sampling**: `--max-incidents-per-cluster` (default 24, `0` = uncapped) caps each cluster to a round-robin-across-sessions sample (high-confidence first), while `total_incidents`/`distinct_sessions` still report true counts and `artifact_content` is never truncated. The Oracle prompt documents that `incidents[]` is a sample. Per-window trimming was deferred (YAGNI at cap 24 ≈ ~24k tokens). Spec/plan: `docs/superpowers/{specs,plans}/2026-06-04-oracle-cluster-sampling*`.
+1. **✅ Oracle big-cluster ingestion — RESOLVED (2026-06-04).** Root cause was incident *count* (≈3 KB/window × thousands), not window size. `analyst cluster` now does **session-stratified sampling**: `--max-incidents-per-cluster` (default **50**, `0` = uncapped) caps each cluster to a round-robin-across-sessions sample (high-confidence first), while `total_incidents`/`distinct_sessions` still report true counts and `artifact_content` is never truncated. The Oracle prompt documents that `incidents[]` is a sample. Per-window trimming was deferred (YAGNI). Spec/plan: `docs/superpowers/{specs,plans}/2026-06-04-oracle-cluster-sampling*`. **Verified end-to-end (2026-06-04):** a live golden run (5,511 incidents → 34 clusters; biggest `retry` cluster 2344 incidents/8 MB → 24-sample/104 KB) fed the Oracle the `inefficiency`/global-`CLAUDE.md` cluster → `escalate-out-of-instructions` (PreToolUse Read-guard hook), acceptance PASS.
+1b. **✅ `retry` detector noise — FIXED (2026-06-04).** The golden run revealed ~half of `retry` was duplicate *successful* calls (verify loops, dup reads): the detector flagged any identical tool+input within 5 turns with no failure check. Now requires an earlier identical call in the window to have errored (`tool_results.is_error`). Spec/plan: `docs/superpowers/{specs,plans}/2026-06-04-retry-detector-noise*`.
 2. **🟡 Dead/removed worktree paths** stay `skip-missing-file` (correct, deferred). Upstream path canonicalization (cluster de-fragmentation so worktree-session glitches accumulate on the canonical repo file) is also deferred.
 3. **🟡 Idempotent `open` retry** after a mid-`submit` failure needs manual `git branch -D` today (applier spec §8, deferred).
 
@@ -88,13 +89,15 @@ Applier runbook (editor + verify dispatch): `fixtures/applier/RUNBOOK.md`.
 
 ## First move for a new session
 
-The extractor→analyst→applier loop is built (incl. applier `suggest` + symlink/worktree
-resolution **and** Oracle big-cluster ingestion via session-stratified sampling). The
-natural next unit is a **live golden end-to-end**: run `analyst cluster` (with the cap) on
-the real corpus, dispatch the Oracle on the top clusters, then `assemble` →
-`applier prepare`/`submit` to land a real PR — proving the full loop on high-signal
-artifacts. Alternatives: **Track B** (freshness audit, spec §5) or the
-**`/agent-smith`** orchestration command. Whichever you pick: brainstorm
+The extractor→analyst→applier loop is built and the Oracle now ingests big clusters
+(session-stratified sampling) on a verified golden run; the `retry` signal is de-noised.
+The remaining piece of that golden run is to **land a real PR**: take the Oracle's
+`inefficiency`/global-`CLAUDE.md` proposal (a PreToolUse Read-guard hook, `escalate`)
+through `assemble` → `applier prepare`/`submit` against `nix-config` — the first
+end-to-end PR. (NB: it's an `escalate-out-of-instructions` hook proposal, so the Editor
+subagent writes a hook in the Nix `--settings` overlay, not prose.) Alternatives:
+**Track B** (freshness audit, spec §5) or the **`/agent-smith`** orchestration command.
+Whichever you pick: brainstorm
 (`superpowers:brainstorming`) → spec → `superpowers:writing-plans` → build via
 `superpowers:subagent-driven-development`, in an isolated `wt` worktree. Do **not** code
 before the plan exists. NB: review-agent Bash sometimes leaves a stray `strings.Cut`
