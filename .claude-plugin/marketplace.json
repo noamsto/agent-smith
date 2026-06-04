@@ -1,0 +1,7 @@
+{
+  "name": "agent-smith",
+  "owner": { "name": "noamsto" },
+  "plugins": [
+    { "name": "agent-smith", "source": "./" }
+  ]
+}
