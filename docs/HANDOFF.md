@@ -10,9 +10,17 @@
 - **Built & merged to `main`:**
   - **Extractor (Track A)** — `cmd/extractor` + `internal/extractor`. Usage: [`docs/extractor.md`](extractor.md).
   - **Analyst** — `cmd/analyst` + `internal/analyst` (the `cluster` + `assemble` binaries and the **Oracle** prompt). Spec: [`docs/superpowers/specs/2026-06-01-analyst-design.md`]. Plan: [`docs/superpowers/plans/2026-06-01-analyst.md`]. Usage: [`docs/analyst.md`](analyst.md).
-  - **Applier** — `cmd/applier` + `internal/applier` (the `prepare`/`open`/`submit` binary + the **Editor** prompt + verify gate). Usage: [`docs/applier.md`](applier.md). Runbook: `fixtures/applier/RUNBOOK.md`.
+  - **Applier** — `cmd/applier` + `internal/applier` (the `prepare`/`open`/`submit` binary + the **Editor** prompt + verify gate). Usage: [`docs/applier.md`](applier.md). Runbook: `fixtures/applier/RUNBOOK.md`. Plus: **`suggest`** subcommand (side-effect-free dry-run index across all proposals — no edits/PRs); **symlink + worktree resolution** in `resolve.go` (`Resolve` EvalSymlinks the artifact and maps linked worktrees to their main repo). Resolution spec: [`docs/superpowers/specs/2026-06-03-applier-resolution-symlink-worktree.md`].
 - **Acceptance bar (skeleton-first) — MET end-to-end:** extractor flags whole-file large Reads as `inefficiency`; `analyst cluster` traces them (via candidate explosion) to the global `CLAUDE.md`; the Oracle chose `strengthen` (not duplicate `add`) in a real golden-eval run → `assemble` wrote the proposal + reason-log.
-- **Next:** **Track B** (freshness audit) plus the `/agent-smith` orchestration command (the applier is now built — it closes the extractor→analyst→applier loop).
+- **Next (highest-value): Oracle big-cluster ingestion.** See "Live-run findings" below. The deterministic chain runs on the real corpus, but the Oracle can't yet ingest the multi-MB clusters — that's the blocker before a real end-to-end PR. Then: **Track B** (freshness audit) + the `/agent-smith` orchestration command.
+
+## Live-run findings (2026-06-03, real corpus)
+
+A full run (`extractor` → `analyst cluster` → `applier prepare`/`suggest`) on the live corpus: **5,386 incidents → 36 clusters → 16 ready / 20 skipped** (before the resolution fix; the global `~/.claude/CLAUDE.md` now resolves to `nix-config`). Open items, in priority order:
+
+1. **🔴 Oracle can't ingest big clusters.** Clusters bundle full transcript windows — up to **8 MB each** (global CLAUDE.md `retry` = 8 MB, `tool_error` = 6.7 MB). They can't be inlined into the Oracle subagent as `fixtures/analyst/RUNBOOK.md` assumes. **Needs window sampling/truncation** (e.g. cap incidents-per-cluster + trim each window) in `analyst cluster` or a pre-Oracle step. This is the gate for a real end-to-end on the high-signal artifacts.
+2. **🟡 Dead/removed worktree paths** stay `skip-missing-file` (correct, deferred). Upstream path canonicalization (cluster de-fragmentation so worktree-session glitches accumulate on the canonical repo file) is also deferred.
+3. **🟡 Idempotent `open` retry** after a mid-`submit` failure needs manual `git branch -D` today (applier spec §8, deferred).
 
 ## What agent-smith is (one paragraph)
 
@@ -33,14 +41,17 @@ repo owns the artifact. `deja-vu` (Phase 2) re-mines to confirm the glitch dropp
 | Analyst | ✅ on `main` | `cmd/analyst`, `internal/analyst`, `docs/analyst.md` |
 | Track B — Freshness audit | ⬜ not started | spec §5 |
 | Applier (proposals → PR) | ✅ on `main` | `cmd/applier`, `internal/applier`, `docs/applier.md` |
-| `/agent-smith` command (orchestration) | ⬜ deferred | build with the applier |
+| Applier `suggest` (dry-run index) | ✅ on `main` | `internal/applier/suggest.go`, `docs/applier.md` §Dry run |
+| Symlink + worktree resolution | ✅ on `main` | `internal/applier/resolve.go`, spec `2026-06-03-applier-resolution-*` |
+| Oracle big-cluster ingestion (windowing) | ⬜ not started | "Live-run findings" #1 — next highest-value |
+| `/agent-smith` command (orchestration) | ⬜ deferred | analyst+applier built; wire the full loop |
 
 ## How to build / test / run
 
 ```bash
-nix develop                       # devshell: go, duckdb, jq, gopls
-go test ./...                     # all tests (extractor + analyst)
-go build ./...                    # both binaries
+nix develop                       # devshell: go, duckdb, jq, gopls, git, gh
+go test ./...                     # all tests (extractor + analyst + applier)
+go build ./...                    # all three binaries
 nix build .#default               # packaged binaries (result/bin/{extractor,analyst,applier}); extractor/analyst duckdb-wrapped, applier git+gh-wrapped
 
 # Track A end-to-end:
@@ -77,7 +88,12 @@ Applier runbook (editor + verify dispatch): `fixtures/applier/RUNBOOK.md`.
 
 ## First move for a new session
 
-Pick the next unit (**Applier** is the natural one — it consumes the analyst's
-`proposals.json` and completes the extractor→analyst→applier loop). Brainstorm it
+The extractor→analyst→applier loop is built (incl. applier `suggest` + symlink/worktree
+resolution). The natural next unit is **Oracle big-cluster ingestion** ("Live-run findings"
+#1) — without it the Oracle can't run on the high-signal artifacts, so the chain can't
+produce a real PR end-to-end. Alternatives: **Track B** (freshness audit, spec §5) or the
+**`/agent-smith`** orchestration command. Whichever you pick: brainstorm
 (`superpowers:brainstorming`) → spec → `superpowers:writing-plans` → build via
-`superpowers:subagent-driven-development`. Do **not** code before the plan exists.
+`superpowers:subagent-driven-development`, in an isolated `wt` worktree. Do **not** code
+before the plan exists. NB: review-agent Bash sometimes leaves a stray `strings.Cut`
+modernization in the working tree — `git restore` it; merge only reviewed commits.
