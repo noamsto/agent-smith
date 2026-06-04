@@ -31,7 +31,7 @@ func runCluster(args []string) {
 	db := fs.String("db", "incidents.db", "incidents DuckDB file")
 	out := fs.String("out", "clusters.json", "output clusters file")
 	minSessions := fs.Int("min-sessions", 3, "minimum distinct sessions for an actionable cluster")
-	maxIncidents := fs.Int("max-incidents-per-cluster", 24, "cap incidents per cluster fed to the Oracle (session-stratified sample); 0 = uncapped")
+	maxIncidents := fs.Int("max-incidents-per-cluster", 50, "cap incidents per cluster fed to the Oracle (session-stratified sample); 0 = uncapped")
 	_ = fs.Parse(args)
 
 	clusters, err := analyst.ClusterDB(context.Background(), *db, *minSessions, *maxIncidents)
