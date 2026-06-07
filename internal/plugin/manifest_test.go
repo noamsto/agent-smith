@@ -64,8 +64,16 @@ func TestAgentsHaveFrontmatter(t *testing.T) {
 	}
 }
 
-func TestCommandExists(t *testing.T) {
-	if len(repoFile(t, "commands/agent-smith.md")) == 0 {
-		t.Error("commands/agent-smith.md is empty")
+func TestCommandsExist(t *testing.T) {
+	for _, c := range []string{"run", "mine", "propose", "apply", "status"} {
+		rel := "commands/" + c + ".md"
+		s := string(repoFile(t, rel))
+		if len(s) == 0 {
+			t.Errorf("%s is empty", rel)
+			continue
+		}
+		if !strings.HasPrefix(s, "---\n") || !strings.Contains(s, "description:") {
+			t.Errorf("%s: missing frontmatter description", rel)
+		}
 	}
 }

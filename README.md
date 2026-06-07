@@ -133,11 +133,11 @@ single-plugin marketplace):
 Then run it:
 
 ```
-/agent-smith              # the whole loop, autonomously → draft PRs
-/agent-smith mine         # extractor → clusters
-/agent-smith propose      # Oracle per cluster → proposals (review-only)
-/agent-smith apply [<id>] # editor → verify → draft PR
-/agent-smith status       # where things stand
+/agent-smith:run          # the whole loop, autonomously → draft PRs
+/agent-smith:mine         # extractor → clusters
+/agent-smith:propose      # Oracle per cluster → proposals (review-only)
+/agent-smith:apply [<id>] # editor → verify → draft PR
+/agent-smith:status       # where things stand
 ```
 
 First run bootstraps everything: the `extractor`/`analyst`/`applier` binaries

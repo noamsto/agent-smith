@@ -46,7 +46,7 @@ repo owns the artifact. `deja-vu` (Phase 2) re-mines to confirm the glitch dropp
 | Applier `suggest` (dry-run index) | ✅ on `main` | `internal/applier/suggest.go`, `docs/applier.md` §Dry run |
 | Symlink + worktree resolution | ✅ on `main` | `internal/applier/resolve.go`, spec `2026-06-03-applier-resolution-*` |
 | Oracle big-cluster ingestion (sampling) | ✅ on `main` | `internal/analyst/cluster.go` (`--max-incidents-per-cluster`), spec `2026-06-04-oracle-cluster-sampling-design.md` |
-| `/agent-smith` plugin (orchestration) | ✅ on `main` | `.claude-plugin/`, `commands/agent-smith.md`, `agents/{oracle,editor}.md`, spec `2026-06-04-agent-smith-plugin-design.md`; nix-config wiring = [#3](https://github.com/noamsto/agent-smith/issues/3) |
+| `/agent-smith:*` plugin (orchestration) | ✅ on `main` | `.claude-plugin/`, `commands/{run,mine,propose,apply,status}.md`, `agents/{oracle,editor}.md`, spec `2026-06-04-agent-smith-plugin-design.md`; nix-config wiring = [#3](https://github.com/noamsto/agent-smith/issues/3) |
 
 ## How to build / test / run
 
