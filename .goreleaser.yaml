@@ -1,0 +1,34 @@
+version: 2
+project_name: agent-smith
+
+builds:
+  - id: extractor
+    main: ./cmd/extractor
+    binary: extractor
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ldflags: ["-s -w -X main.version={{.Version}}"]
+  - id: analyst
+    main: ./cmd/analyst
+    binary: analyst
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ldflags: ["-s -w -X main.version={{.Version}}"]
+  - id: applier
+    main: ./cmd/applier
+    binary: applier
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ldflags: ["-s -w -X main.version={{.Version}}"]
+
+archives:
+  - ids: [extractor, analyst, applier]
+    # load-bearing: scripts/bootstrap.sh constructs URLs from this exact pattern
+    name_template: "agent-smith_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+
+checksum:
+  name_template: checksums.txt

@@ -120,19 +120,17 @@ Later, `déjà-vu` re-mines and records whether the glitch rate actually dropped
 
 ---
 
-## Run it
+## 📦 Install
 
-```bash
-nix develop              # devshell: go, duckdb, jq, git, gh
-go test ./...            # full suite
-nix build .#default      # → result/bin/{extractor,analyst,applier}
+agent-smith is a **Claude Code plugin** (this repo doubles as its own
+single-plugin marketplace):
+
+```
+/plugin marketplace add noamsto/agent-smith
+/plugin install agent-smith@agent-smith
 ```
 
-The repo is also a **Claude Code plugin** (and its own single-plugin marketplace).
-Enable it interactively — `/plugin marketplace add noamsto/agent-smith`, then
-`/plugin install agent-smith@agent-smith` — or declaratively via
-`extraKnownMarketplaces` + `enabledPlugins` in `settings.json`. The three binaries
-must be on PATH (nix). Then:
+Then run it:
 
 ```
 /agent-smith              # the whole loop, autonomously → draft PRs
@@ -140,6 +138,35 @@ must be on PATH (nix). Then:
 /agent-smith propose      # Oracle per cluster → proposals (review-only)
 /agent-smith apply [<id>] # editor → verify → draft PR
 /agent-smith status       # where things stand
+```
+
+First run bootstraps everything: the `extractor`/`analyst`/`applier` binaries
+(and the `duckdb` CLI, if you don't have one) download automatically for your
+OS/arch into `~/.cache/agent-smith/bin`. The only assumptions are `git` and an
+authenticated `gh`. Binaries already on PATH — e.g. nix-installed — are used
+as-is, never downloaded over.
+
+<details>
+<summary>Declarative install (settings.json)</summary>
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "agent-smith": { "source": { "source": "github", "repo": "noamsto/agent-smith" } }
+  },
+  "enabledPlugins": { "agent-smith@agent-smith": true }
+}
+```
+
+</details>
+
+## 🔧 Develop
+
+```bash
+nix develop                            # devshell: go, duckdb, jq, git, gh, goreleaser
+go test ./...                          # full suite
+nix build .#default                    # → result/bin/{extractor,analyst,applier}
+goreleaser release --snapshot --clean  # local release dry-run → dist/
 ```
 
 ---

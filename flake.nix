@@ -8,11 +8,14 @@
 
   outputs = { self, nixpkgs, flake-utils }:
     flake-utils.lib.eachDefaultSystem (system:
-      let pkgs = import nixpkgs { inherit system; };
+      let
+        pkgs = import nixpkgs { inherit system; };
+        version = (builtins.fromJSON (builtins.readFile ./.claude-plugin/plugin.json)).version;
       in {
         packages.default = pkgs.buildGoModule {
           pname = "agent-smith";
-          version = "0.1.0";
+          inherit version;
+          ldflags = [ "-X main.version=${version}" ];
           src = ./.;
           vendorHash = null; # stdlib only
           subPackages = [ "cmd/extractor" "cmd/analyst" "cmd/applier" ];
@@ -29,7 +32,7 @@
         };
 
         devShells.default = pkgs.mkShell {
-          packages = [ pkgs.go pkgs.gopls pkgs.go-tools pkgs.duckdb pkgs.jq pkgs.git pkgs.gh ];
+          packages = [ pkgs.go pkgs.gopls pkgs.go-tools pkgs.duckdb pkgs.jq pkgs.git pkgs.gh pkgs.goreleaser ];
         };
       });
 }

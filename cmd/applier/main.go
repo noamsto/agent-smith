@@ -10,12 +10,16 @@ import (
 	"github.com/noamsto/agent-smith/internal/applier"
 )
 
+var version = "dev"
+
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, "usage: applier <prepare|open|submit|suggest> [flags]")
 		os.Exit(2)
 	}
 	switch os.Args[1] {
+	case "--version":
+		fmt.Println(version)
 	case "prepare":
 		runPrepare(os.Args[2:])
 	case "open":

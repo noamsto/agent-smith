@@ -20,3 +20,6 @@ result-*
 
 # Claude Code machine-local config
 .claude/
+
+# GoReleaser build output
+dist/

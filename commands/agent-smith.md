@@ -5,11 +5,21 @@ allowed-tools: Bash, Read, Write, Agent, Skill
 ---
 
 You are orchestrating the **agent-smith** loop. The deterministic steps are the
-`extractor`/`analyst`/`applier` binaries (on PATH). The judgement steps are the
-bundled subagents `agent-smith:oracle` and `agent-smith:editor`, which you dispatch
-with the Agent tool. Work from the current repo (the agent-smith checkout). All
-intermediate artifacts live in the cwd: `incidents.db`, `clusters.json`,
-`proposals.json`, `apply-plan.json`, and `reason-log/`.
+`extractor`/`analyst`/`applier` binaries; the judgement steps are the bundled
+subagents `agent-smith:oracle` and `agent-smith:editor`, which you dispatch
+with the Agent tool. All intermediate artifacts live in the cwd:
+`incidents.db`, `clusters.json`, `proposals.json`, `apply-plan.json`, and
+`reason-log/`.
+
+**Step zero, always:** run the plugin's `scripts/bootstrap.sh` and capture its
+stdout (one line) as `$BIN`. The script lives under this command's plugin root —
+the base directory of this skill (`<base>/scripts/bootstrap.sh`); in a dev
+checkout of agent-smith it is `./scripts/bootstrap.sh`. If neither exists, find
+it: `ls -t ~/.claude/plugins/cache/agent-smith/agent-smith/*/scripts/bootstrap.sh | head -1`.
+Bootstrap resolves or downloads the binaries (and duckdb) — every
+`extractor`/`analyst`/`applier` invocation below MUST be prefixed with
+`PATH="$BIN:$PATH"` (each Bash call is a fresh shell; the prefix also lets the
+binaries find `duckdb`). If bootstrap itself fails, stop and show its error.
 
 `$ARGUMENTS` selects the phase. Empty → run the **full autonomous loop**
 (`mine` → `propose` → `apply` for every ready proposal). Otherwise dispatch on the
