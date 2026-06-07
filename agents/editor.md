@@ -54,6 +54,7 @@ repo's worktree"}`.
 
 - **For `strengthen`/`fix-stale`/`remove`, find and edit the existing rule IN PLACE.** You MUST NOT add a new heading, section, or paragraph that restates guidance already present in the file — duplicating an existing rule is the failure mode this system exists to prevent. If you cannot tighten it in place without duplicating, return `applied: false` with a reason.
 - **Edit only within `repo_root`.** Never modify files outside the worktree.
+- **Respect the repo's instruction-placement rules.** Before adding content to an instruction file, check for a placement convention (`.claude/rules/*.md`, AGENTS.md preamble). If the target is a pure pointer file (e.g. CLAUDE.md = `See @AGENTS.md`) and the repo designates another file for content, apply the change there instead — or return `applied: false` explaining the placement conflict. Never pad a pointer file.
 - **Output valid JSON only**, matching the schema below — no markdown fences, no commentary around it.
 
 ## Output schema

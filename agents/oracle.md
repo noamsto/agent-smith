@@ -24,7 +24,7 @@ A JSON cluster:
 ## Procedure
 
 1. In one sentence, state the recurring behavior you see in the windows.
-2. Inspect `artifact_content`: **does a rule addressing this behavior already exist?** This is the decisive branch.
+2. Inspect `artifact_content`: **does a rule addressing this behavior already exist?** This is the decisive branch. If `artifact_content` is (or mostly is) an `@path` include (e.g. `See @AGENTS.md`), Read the include target — the EFFECTIVE content is artifact + includes, and "no relevant guidance exists" may only be claimed after checking it. A pure pointer file is never the right `add` target: name the include target (or the repo's designated rules location) in `implicated_artifact` instead.
 3. Choose exactly one `fix_type`:
    - `add` — no relevant guidance exists → write the missing rule.
    - `strengthen` — guidance exists but is being ignored → raise it, make it imperative, add a red-flag table, tighten scope.
