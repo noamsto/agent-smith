@@ -31,10 +31,14 @@ The binaries are pure Go (zero CGO — they shell out to the `duckdb` CLI and
 
 **Version invariant.** The marketplace serves `main`, not tags. Therefore:
 `plugin.json`'s `version` only changes in the release commit, and the `vX.Y.Z`
-tag goes on exactly that commit. Between releases, main carries the last
-released version — prompt/agent-file tweaks ride along without a binary bump
-(the version pins binaries, not prompts). Tag ⇔ plugin.json ⇔ binary
-`--version` always agree.
+tag goes on exactly that commit. Tag ⇔ plugin.json ⇔ binary `--version`
+always agree.
+
+*Erratum (2026-06-07, learned shipping v0.1.1):* `claude plugin update` skips
+re-syncing content when the installed and served versions match — so prompt
+tweaks do NOT ride along without a bump. Any content change that must reach
+installed plugins needs a version bump + tag (a patch release; the binaries are
+rebuilt with the new stamp even if unchanged).
 
 ### 2. Bootstrap (`scripts/bootstrap.sh`)
 
