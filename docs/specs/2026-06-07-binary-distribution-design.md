@@ -24,6 +24,8 @@ The binaries are pure Go (zero CGO — they shell out to the `duckdb` CLI and
 - `.github/workflows/release.yml`: on `v*` tag push → `goreleaser/goreleaser-action`.
   The workflow **fails if the tag ≠ `plugin.json` version** (see invariant below).
 - Each binary gains a `--version` flag printing the stamped version.
+- The flake stamps the same version via ldflags (read from `plugin.json`), so
+  nix-built binaries also report a real version, not `dev`.
 - `goreleaser` joins the devshell for `goreleaser release --snapshot --clean`
   local testing.
 
@@ -36,18 +38,32 @@ released version — prompt/agent-file tweaks ride along without a binary bump
 
 ### 2. Bootstrap (`scripts/bootstrap.sh`)
 
-Ships in the plugin. The `/agent-smith` command runs it as step zero and
-prepends its stdout (the resolved bin dir) to PATH for the session.
+Ships in the plugin. The `/agent-smith` command runs it as step zero. It
+**materializes `~/.cache/agent-smith/bin/`** ("`$BIN`") with all four tools —
+downloaded binaries, or symlinks to PATH-found ones — and prints that dir.
+Every subsequent binary invocation in the command file uses one uniform
+pattern: `PATH="$BIN:$PATH" extractor …` (each Bash call is a fresh shell, so
+a one-time `export PATH` would not survive; the prefix also lets the Go
+binaries find `duckdb`). Symlinks are re-resolved on every run, so a stale
+target (e.g. after nix GC) self-heals.
 
-1. Read the expected version from `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json`.
-2. Per binary: PATH hit at the right `--version` → use it (nix users
-   short-circuit; no download ever). Wrong version on PATH → warn, fall
-   through. Else check `~/.cache/agent-smith/bin/`; on miss/mismatch, download
-   `agent-smith_<os>_<arch>.tar.gz` from the matching GitHub release and unpack.
-3. `duckdb`: any PATH hit **≥ the minimum version floor (1.0.0)** wins; else
-   fetch the pinned official duckdb CLI asset (`duckdb_cli-linux-<arch>.zip` /
-   `duckdb_cli-osx-universal.zip`, initial pin v1.5.3) into the same cache dir.
-   Both values live as constants at the top of `bootstrap.sh`.
+1. **Self-locating, no `${CLAUDE_PLUGIN_ROOT}`** — that variable is only
+   substituted in hooks/MCP/monitor configs, not command markdown. The script
+   derives the plugin root from its own path (`$(dirname "$0")/..`) and reads
+   the expected version from `<root>/.claude-plugin/plugin.json`. The command
+   locates the script via its skill base directory (injected by the harness at
+   invocation), falling back to a glob under `~/.claude/plugins/cache/`.
+2. Per binary: PATH hit at the right `--version` → symlink it into `$BIN`
+   (nix users short-circuit; no download ever). An unstamped `dev` version on
+   PATH is **trusted** with a one-line note — that's an intentional local
+   build. A stamped-but-mismatched version warns and falls through. Else, on
+   cache miss/mismatch, download `agent-smith_<os>_<arch>.tar.gz` from the
+   matching GitHub release and unpack into `$BIN`.
+3. `duckdb`: any PATH hit at **major version ≥ 1** wins (major-only check —
+   macOS `sort` lacks `-V`, so no semver compare); else fetch the pinned
+   official duckdb CLI **`.gz`** asset (`duckdb_cli-linux-<arch>.gz` /
+   `duckdb_cli-osx-universal.gz`, initial pin v1.5.3) — `gunzip` is universal,
+   `unzip` isn't. Floor and pin live as constants at the top of the script.
 4. Downloads via `curl -fsSL` on constructed `releases/download/` URLs — no
    `gh`, which requires auth even for public repos.
 5. One explicit case-mapping block reconciles naming: `uname -s/-m`
