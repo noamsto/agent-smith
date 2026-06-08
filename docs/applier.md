@@ -32,6 +32,13 @@ aborts instead of opening a malformed PR. The PR title/body enumerate every
 proposal the group carries (id + summary), and each proposal's reason-log entry
 gets the shared PR link.
 
+The **verify** step also runs a **placement check**: it loads the target repo's own
+instruction-placement rules from the worktree (`.claude/rules/*.md` and the `AGENTS.md`
+preamble, skipped silently when absent) and feeds them to the reviewer as criteria, so a
+diff that violates placement (e.g. padding a CLAUDE.md the repo mandates stay a pure
+`@AGENTS.md` pointer) is flagged instead of sailing through. This backstops the editor's
+own placement guard (`agents/editor.md`).
+
 Commits run with `PRE_COMMIT_ALLOW_NO_CONFIG=1` so a fresh worktree lacking
 `.pre-commit-config.yaml` does not hard-fail a repo whose commit hook invokes
 pre-commit. When `submit` fails, the worktree is **preserved** (it holds the

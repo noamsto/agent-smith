@@ -47,6 +47,11 @@ Code subagent dispatches the orchestrator drives.
 
    c. **Verify gate** — dispatch on the combined worktree diff (`git -C $WT diff`):
       - Always: the `deslop` skill/agent on the diff (prose artifacts attract slop).
+      - **Placement check** (backstops the editor's placement guard): load the target
+        repo's own rules from the worktree — `cat $WT/.claude/rules/*.md` and the
+        `AGENTS.md` preamble (skip silently if absent) — and feed them to the reviewer
+        as criteria. FLAG diffs that violate placement (e.g. padding a CLAUDE.md the
+        repo mandates stay a pure `@AGENTS.md` pointer).
       - If the diff touches a hook / `settings.json` / the Nix overlay: also
         `find-bugs` and `code-review`.
       - If findings are substantive: re-dispatch the editor for the implicated
