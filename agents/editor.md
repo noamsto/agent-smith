@@ -99,11 +99,11 @@ command=$(printf '%s' "$input" | jq -r '.tool_input.command // empty') || exit 0
 # Replace this guard with the proposal's actual condition.
 case "$command" in
 *PATTERN_TO_CATCH*)
-  # Advisory mode (pairs with #19): nudge Claude, do not block.
+  # Advisory mode (see Enforcement ladder in oracle.md): nudge Claude, do not block.
   jq -n --arg cwd "$cwd" '{hookSpecificOutput: {
     hookEventName: "PreToolUse",
     additionalContext: ("In " + $cwd + ": prefer X over Y here.")
-  }}'
+  }}' || exit 0
   # Deny mode: block the call and explain why (cwd available for the reason).
   # jq -n --arg cwd "$cwd" '{hookSpecificOutput: {
   #   hookEventName: "PreToolUse",
