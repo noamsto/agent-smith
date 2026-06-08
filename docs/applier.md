@@ -78,8 +78,12 @@ shared `group_id` and a branch `<type>/agent-smith-<repo-artifact-slug>` (`docs`
 prose fixes, `chore` when any member is an escalate). Status:
 `ready`, `skip-unresolved` (no git repo), `skip-missing-file`
 (`strengthen`/`fix-stale`/`remove` on an absent file — `add` is allowed to create),
-`skip-unrouted` (escalation with no settings repo — see below), or `skip-duplicate`
-(see Dedup gate). Skipped entries belong to no group.
+`skip-unrouted` (escalation with no settings repo — see below), `skip-duplicate`
+(see Dedup gate), or `skip-low-confidence` (the Oracle's `confidence: low` — dropped
+by default, since a weakly-evidenced diagnosis is not worth a PR; pass
+`--include-low-confidence` to keep them). The propose phase's **skeptic** pass already
+drops proposals it refutes on disk before they reach `prepare`. Skipped entries belong
+to no group.
 
 `escalate-out-of-instructions` proposals are special: the proposed hook/permission/
 default belongs in a Claude Code settings layer (the `--settings` overlay at

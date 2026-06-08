@@ -13,12 +13,13 @@ import (
 )
 
 const (
-	StatusReady       = "ready"
-	StatusUnresolved  = "skip-unresolved"
-	StatusMissingFile = "skip-missing-file"
-	StatusDeclined    = "skip-declined"
-	StatusUnrouted    = "skip-unrouted"
-	StatusDuplicate   = "skip-duplicate"
+	StatusReady         = "ready"
+	StatusUnresolved    = "skip-unresolved"
+	StatusMissingFile   = "skip-missing-file"
+	StatusDeclined      = "skip-declined"
+	StatusUnrouted      = "skip-unrouted"
+	StatusDuplicate     = "skip-duplicate"
+	StatusLowConfidence = "skip-low-confidence"
 )
 
 // PlanEntry is one resolved proposal in apply-plan.json. Status gates whether the
@@ -61,19 +62,19 @@ type DedupConfig struct {
 }
 
 // Prepare reads proposals.json (an array of analyst.Proposal), resolves each, and
-// assigns a Status. Unresolvable or missing-file proposals are recorded as skips
-// rather than failing the batch. settingsRepo is the repo root owning the Claude
-// Code settings layers; `escalate-out-of-instructions` proposals route there
-// instead of the implicated repo (the hook/default cannot land in the implicated
-// worktree). When settingsRepo is empty or unresolvable, those proposals are
-// marked skip-unrouted with a reason rather than dispatching a doomed editor. Before
-// a resolved proposal is marked ready, the dedup gate (cfg) checks it against open PRs
-// and prior reason-log history for the same artifact+behavior; a hit is recorded as
-// StatusDuplicate with Supersedes set rather than regenerating duplicate pending work.
-// Ready entries that target the same artifact in the same repo share a GroupID and a
-// group branch, so the apply loop lands them in one worktree/PR. The plan is sorted by
-// ProposalID.
-func Prepare(proposalsPath, settingsRepo string, cfg DedupConfig) ([]PlanEntry, error) {
+// assigns a Status. Unresolvable, missing-file, or (unless includeLowConfidence)
+// low-confidence proposals are recorded as skips rather than failing the batch.
+// settingsRepo is the repo root owning the Claude Code settings layers;
+// `escalate-out-of-instructions` proposals route there instead of the implicated repo
+// (the hook/default cannot land in the implicated worktree). When settingsRepo is empty
+// or unresolvable, those proposals are marked skip-unrouted with a reason rather than
+// dispatching a doomed editor. Before a resolved proposal is marked ready, the dedup
+// gate (cfg) checks it against open PRs and prior reason-log history for the same
+// artifact+behavior; a hit is recorded as StatusDuplicate with Supersedes set rather
+// than regenerating duplicate pending work. Ready entries that target the same artifact
+// in the same repo share a GroupID and a group branch, so the apply loop lands them in
+// one worktree/PR. The plan is sorted by ProposalID.
+func Prepare(proposalsPath, settingsRepo string, cfg DedupConfig, includeLowConfidence bool) ([]PlanEntry, error) {
 	data, err := os.ReadFile(proposalsPath)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", proposalsPath, err)
@@ -108,7 +109,12 @@ func Prepare(proposalsPath, settingsRepo string, cfg DedupConfig) ([]PlanEntry, 
 	byProp := make(map[string]analyst.Proposal, len(props))
 	for _, p := range props {
 		byProp[p.ID] = p
-		e := prepareOne(p, settingsRepo)
+		var e PlanEntry
+		if p.Confidence == "low" && !includeLowConfidence {
+			e = PlanEntry{ProposalID: p.ID, Status: StatusLowConfidence}
+		} else {
+			e = prepareOne(p, settingsRepo)
+		}
 		// Group ready entries by (repo, artifact) so they share a worktree/branch/PR.
 		if e.Status == StatusReady {
 			key := e.RepoRoot + "\x00" + e.FilePath

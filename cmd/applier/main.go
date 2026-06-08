@@ -49,6 +49,7 @@ func runPrepare(args []string) {
 	reasonLog := fs.String("reason-log-dir", "reason-log", "reason-log directory consulted for prior pending work")
 	repo := fs.String("repo", ".", "agent-smith repo root whose open PRs are checked for duplicates")
 	noDedup := fs.Bool("no-dedup", false, "skip the pending-work dedup gate (open PRs + reason-log history)")
+	includeLow := fs.Bool("include-low-confidence", false, "keep confidence:low proposals (dropped by default)")
 	_ = fs.Parse(args)
 
 	cfg := applier.DedupConfig{}
@@ -59,7 +60,7 @@ func runPrepare(args []string) {
 		}
 	}
 
-	plan, err := applier.Prepare(*proposals, *settingsRepo, cfg)
+	plan, err := applier.Prepare(*proposals, *settingsRepo, cfg, *includeLow)
 	if err != nil {
 		fatal(err)
 	}
