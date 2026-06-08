@@ -3,6 +3,7 @@ package analyst
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -121,8 +122,11 @@ func ClusterDB(ctx context.Context, db string, minSessions, maxIncidents int) (c
 	for _, r := range rows {
 		data, err := os.ReadFile(r.Artifact)
 		if err != nil {
-			dropped++
-			continue
+			if errors.Is(err, os.ErrNotExist) {
+				dropped++
+				continue
+			}
+			return nil, 0, fmt.Errorf("read artifact %s: %w", r.Artifact, err)
 		}
 		s := string(data)
 		clusters = append(clusters, Cluster{
