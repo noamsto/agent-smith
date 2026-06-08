@@ -80,6 +80,22 @@ func TestWriteProposalsAndReasonLogs(t *testing.T) {
 	}
 }
 
+func TestSkipProposalValidatesWithoutProposedChange(t *testing.T) {
+	dir := t.TempDir()
+	skip := `{"id":"glitch-confirm-irreversible","implicated_artifact":"/g/CLAUDE.md#git",
+	  "fix_type":"skip","evidence":["s1:1","s2:1","s3:1","≥3 sessions"],
+	  "diagnosis":"harness already confirms destructive git","proposed_change":"",
+	  "confidence":"high","reason_log":"skipped: already handled by harness — system prompt confirms irreversible actions"}`
+	writeJSON(t, filepath.Join(dir, "p.json"), skip)
+	props, errs := LoadProposals(dir)
+	if len(errs) != 0 {
+		t.Fatalf("expected skip proposal to validate, got errors: %v", errs)
+	}
+	if len(props) != 1 || props[0].FixType != "skip" {
+		t.Fatalf("expected 1 skip proposal, got %+v", props)
+	}
+}
+
 func TestLoadProposalsToleratesCodeFences(t *testing.T) {
 	dir := t.TempDir()
 	fenced := "```json\n" + `{"id":"glitch-fenced","implicated_artifact":"/g/CLAUDE.md#x",

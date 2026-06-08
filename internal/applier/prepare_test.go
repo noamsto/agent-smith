@@ -19,7 +19,9 @@ func TestPrepareStatuses(t *testing.T) {
 	  {"id":"p-strengthen-missing","implicated_artifact":"` + missing + `","fix_type":"strengthen",
 	   "evidence":["s1:1"],"diagnosis":"d","proposed_change":"c","confidence":"high","reason_log":"r"},
 	  {"id":"p-unresolved","implicated_artifact":"/nonexistent-xyz/C.md","fix_type":"add",
-	   "evidence":["s1:1"],"diagnosis":"d","proposed_change":"c","confidence":"high","reason_log":"r"}
+	   "evidence":["s1:1"],"diagnosis":"d","proposed_change":"c","confidence":"high","reason_log":"r"},
+	  {"id":"p-skip","implicated_artifact":"` + existing + `#x","fix_type":"skip",
+	   "evidence":["s1:1"],"diagnosis":"d","proposed_change":"","confidence":"high","reason_log":"skipped: already handled by harness"}
 	]`
 	pf := filepath.Join(t.TempDir(), "proposals.json")
 	if err := os.WriteFile(pf, []byte(proposals), 0o644); err != nil {
@@ -39,6 +41,7 @@ func TestPrepareStatuses(t *testing.T) {
 		"p-strengthen":         StatusReady,
 		"p-strengthen-missing": StatusMissingFile,
 		"p-unresolved":         StatusUnresolved,
+		"p-skip":               StatusDeclined,
 	}
 	for id, w := range want {
 		if got[id] != w {
