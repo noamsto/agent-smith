@@ -46,9 +46,20 @@ func runPrepare(args []string) {
 	out := fs.String("out", "apply-plan.json", "output apply-plan file")
 	settingsRepo := fs.String("settings-repo", os.Getenv("AGENT_SMITH_SETTINGS_REPO"),
 		"repo root owning the Claude Code settings layers; escalations route here (default $AGENT_SMITH_SETTINGS_REPO)")
+	reasonLog := fs.String("reason-log-dir", "reason-log", "reason-log directory consulted for prior pending work")
+	repo := fs.String("repo", ".", "agent-smith repo root whose open PRs are checked for duplicates")
+	noDedup := fs.Bool("no-dedup", false, "skip the pending-work dedup gate (open PRs + reason-log history)")
 	_ = fs.Parse(args)
 
-	plan, err := applier.Prepare(*proposals, *settingsRepo)
+	cfg := applier.DedupConfig{}
+	if !*noDedup {
+		cfg = applier.DedupConfig{
+			ListOpenPRs:  applier.GhOpenPRs(applier.Run, *repo),
+			ReasonLogDir: *reasonLog,
+		}
+	}
+
+	plan, err := applier.Prepare(*proposals, *settingsRepo, cfg)
 	if err != nil {
 		fatal(err)
 	}
@@ -57,12 +68,17 @@ func runPrepare(args []string) {
 	}
 	ready := 0
 	for _, e := range plan {
-		if e.Status == applier.StatusReady {
+		switch e.Status {
+		case applier.StatusReady:
 			ready++
-		} else if e.Reason != "" {
-			fmt.Fprintf(os.Stderr, "skip %s: %s (%s)\n", e.ProposalID, e.Status, e.Reason)
-		} else {
-			fmt.Fprintf(os.Stderr, "skip %s: %s\n", e.ProposalID, e.Status)
+		case applier.StatusDuplicate:
+			fmt.Fprintf(os.Stderr, "skip %s: %s — supersedes %s\n", e.ProposalID, e.Status, e.Supersedes)
+		default:
+			if e.Reason != "" {
+				fmt.Fprintf(os.Stderr, "skip %s: %s (%s)\n", e.ProposalID, e.Status, e.Reason)
+			} else {
+				fmt.Fprintf(os.Stderr, "skip %s: %s\n", e.ProposalID, e.Status)
+			}
 		}
 	}
 	fmt.Printf("wrote %d plan entries (%d ready) to %s\n", len(plan), ready, *out)

@@ -45,7 +45,8 @@ the base), and refuses to reset a branch that carries its own commits.
 ```bash
 nix develop
 go run ./cmd/applier prepare --proposals proposals.json --out apply-plan.json \
-    --settings-repo "$AGENT_SMITH_SETTINGS_REPO"   # repo owning the settings layers; escalations route here
+    --settings-repo "$AGENT_SMITH_SETTINGS_REPO" \   # repo owning the settings layers; escalations route here
+    --reason-log-dir reason-log --repo .             # dedup gate vs open PRs + prior reason-log (add --no-dedup to skip)
 go run ./cmd/applier suggest --plan apply-plan.json --proposals proposals.json --out suggestions.md  # dry run: review-only, no edits/PRs
 go run ./cmd/applier open    --plan apply-plan.json --group <group-id>     # → worktree + file + proposal ids
 #   (dispatch the editor subagent once per id into the worktree → editor-result-<id>.json; run the verify gate)
@@ -75,9 +76,10 @@ loop.
 are then **grouped** by their resolved `(repo, artifact)` pair; each group gets a
 shared `group_id` and a branch `<type>/agent-smith-<repo-artifact-slug>` (`docs` for
 prose fixes, `chore` when any member is an escalate). Status:
-`ready`, `skip-unresolved` (no git repo), or `skip-missing-file`
-(`strengthen`/`fix-stale`/`remove` on an absent file — `add` is allowed to create).
-Skipped entries belong to no group.
+`ready`, `skip-unresolved` (no git repo), `skip-missing-file`
+(`strengthen`/`fix-stale`/`remove` on an absent file — `add` is allowed to create),
+`skip-unrouted` (escalation with no settings repo — see below), or `skip-duplicate`
+(see Dedup gate). Skipped entries belong to no group.
 
 `escalate-out-of-instructions` proposals are special: the proposed hook/permission/
 default belongs in a Claude Code settings layer (the `--settings` overlay at
@@ -88,6 +90,30 @@ glitch. `prepare` routes their `repo_root` to `--settings-repo`
 repo. When no settings repo is configured (or it is not a git repo), the proposal is
 marked `skip-unrouted` with a routing `reason` — surfaced on stderr and in
 `suggestions.md` — instead of dispatching an editor that would predictably decline.
+
+## Dedup gate (pending work)
+
+Before a resolved proposal is marked `ready`, `prepare` checks it against
+**pending** work for the same artifact+behavior and, on a hit, records
+`skip-duplicate` with a `supersedes` field naming what it duplicates — rather than
+opening a second hard-conflicting PR. The two sources:
+
+- **Open PRs** — `gh pr list --state open` on the agent-smith repo (`--repo`,
+  default cwd). A PR whose head branch is the branch this proposal would push to
+  (same id ⇒ same artifact + fix) is a pending duplicate.
+- **Prior reason-log history** (`--reason-log-dir`) — an entry that linked a PR
+  (`**PR:**`) and still carries the deja-vu outcome placeholder (unresolved) is
+  pending. It is matched on a **dedup key** of canonical artifact path
+  (`resolveRealPath`, symlink/worktree-robust, same as `Resolve`) + the normalized
+  `#section` behavior anchor — so the 06-04 vs 06-07 skeleton-first collision
+  (different ids, slugs, filenames; same `CLAUDE.md#reading-code-skeleton-first`)
+  is caught even though the open-PR branch check would miss it.
+
+Once deja-vu replaces the placeholder with an outcome, the entry is **resolved**
+and no longer blocks — re-proposing a *rejected* fix is a separate concern
+(issue #4), not pending-work dedup. Pass `--no-dedup` to disable the gate.
+`suggest` lists skipped duplicates with their `supersedes` target, so a deduped
+proposal is always surfaced, never silently dropped.
 
 ## Eval
 

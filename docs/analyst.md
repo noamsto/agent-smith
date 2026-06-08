@@ -76,9 +76,14 @@ representative sample (`sampled_incidents`) against the real totals.
 
 ## Outputs
 
-- `proposals.json` — validated, deduped proposals (machine-local, gitignored).
+- `proposals.json` — validated proposals, deduped by `id` within the run
+  (machine-local, gitignored). Dedup of **pending work across runs** (an open PR or
+  an unresolved reason-log entry for the same artifact+behavior) is the applier's
+  job, in `prepare` — see `docs/applier.md`.
 - `reason-log/<date>-<slug>.md` — append-only, committed; the applier later appends
-  the PR link and `deja-vu` the outcome.
+  the PR link and `deja-vu` the outcome. The applier's dedup gate keys on the
+  `**Artifact:**` line (canonical path + `#section` behavior anchor) and treats an
+  entry as pending until the `deja-vu` outcome placeholder is replaced.
 
 ## Eval
 

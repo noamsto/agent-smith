@@ -54,9 +54,12 @@ func Suggest(plan []PlanEntry, props []analyst.Proposal) string {
 			if e.Status == StatusReady {
 				continue
 			}
-			if e.Reason != "" {
+			switch {
+			case e.Supersedes != "":
+				fmt.Fprintf(&b, "- `%s` — %s (supersedes %s)\n", e.ProposalID, e.Status, e.Supersedes)
+			case e.Reason != "":
 				fmt.Fprintf(&b, "- `%s` — %s (%s)\n", e.ProposalID, e.Status, e.Reason)
-			} else {
+			default:
 				fmt.Fprintf(&b, "- `%s` — %s\n", e.ProposalID, e.Status)
 			}
 		}
