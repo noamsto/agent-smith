@@ -34,8 +34,9 @@ func runCluster(args []string) {
 	fs := flag.NewFlagSet("cluster", flag.ExitOnError)
 	db := fs.String("db", "incidents.db", "incidents DuckDB file")
 	out := fs.String("out", "clusters.json", "output clusters file")
-	minSessions := fs.Int("min-sessions", 3, "minimum distinct sessions for an actionable cluster")
+	minSessions := fs.Int("min-sessions", 5, "minimum distinct sessions for an actionable cluster")
 	maxIncidents := fs.Int("max-incidents-per-cluster", 50, "cap incidents per cluster fed to the Oracle (session-stratified sample); 0 = uncapped")
+	top := fs.Int("top", 0, "keep only the top N clusters by signal strength (distinct_sessions, then total_incidents); 0 = keep all")
 	_ = fs.Parse(args)
 
 	clusters, dropped, err := analyst.ClusterDB(context.Background(), *db, *minSessions, *maxIncidents)
@@ -45,6 +46,12 @@ func runCluster(args []string) {
 	}
 	if dropped > 0 {
 		fmt.Fprintf(os.Stderr, "dropped %d cluster(s) whose canonical artifact no longer exists\n", dropped)
+	}
+	clusters, topDropped := analyst.TopClusters(clusters, *top)
+	if topDropped > 0 {
+		cutoff := clusters[len(clusters)-1]
+		fmt.Fprintf(os.Stderr, "--top %d: dropped %d lower-signal clusters; cutoff at %d distinct sessions / %d incidents\n",
+			*top, topDropped, cutoff.DistinctSessions, cutoff.TotalIncidents)
 	}
 	if err := analyst.WriteClusters(clusters, *out); err != nil {
 		fmt.Fprintln(os.Stderr, "analyst cluster:", err)

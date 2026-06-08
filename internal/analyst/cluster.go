@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"sort"
 )
 
 // Cluster is one actionable group: incidents sharing a candidate artifact and a
@@ -141,6 +142,29 @@ func ClusterDB(ctx context.Context, db string, minSessions, maxIncidents int) (c
 		})
 	}
 	return clusters, dropped, nil
+}
+
+// TopClusters ranks clusters by signal strength — distinct_sessions, then
+// total_incidents, with cluster_id as a deterministic tiebreak — and keeps the
+// top n. n <= 0 keeps all. It returns the kept clusters and the dropped count
+// so callers can surface the truncation rather than letting it stay silent.
+func TopClusters(clusters []Cluster, n int) (kept []Cluster, dropped int) {
+	if n <= 0 || len(clusters) <= n {
+		return clusters, 0
+	}
+	ranked := make([]Cluster, len(clusters))
+	copy(ranked, clusters)
+	sort.SliceStable(ranked, func(i, j int) bool {
+		a, b := ranked[i], ranked[j]
+		if a.DistinctSessions != b.DistinctSessions {
+			return a.DistinctSessions > b.DistinctSessions
+		}
+		if a.TotalIncidents != b.TotalIncidents {
+			return a.TotalIncidents > b.TotalIncidents
+		}
+		return a.ClusterID < b.ClusterID
+	})
+	return ranked[:n], len(ranked) - n
 }
 
 // WriteClusters marshals clusters to outPath as indented JSON.

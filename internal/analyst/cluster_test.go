@@ -288,3 +288,42 @@ func TestClusterUncappedKeepsAllIncidents(t *testing.T) {
 		t.Errorf("uncapped kept %d incidents, want all 6", len(members))
 	}
 }
+
+func TestTopClustersRanksAndTruncates(t *testing.T) {
+	clusters := []Cluster{
+		{ClusterID: "a", DistinctSessions: 4, TotalIncidents: 10},
+		{ClusterID: "b", DistinctSessions: 9, TotalIncidents: 12},
+		{ClusterID: "c", DistinctSessions: 9, TotalIncidents: 30}, // ties b on sessions, wins on incidents
+		{ClusterID: "d", DistinctSessions: 6, TotalIncidents: 50},
+		{ClusterID: "e", DistinctSessions: 4, TotalIncidents: 99},
+	}
+	kept, dropped := TopClusters(clusters, 3)
+	if dropped != 2 {
+		t.Fatalf("dropped = %d, want 2", dropped)
+	}
+	gotIDs := []string{kept[0].ClusterID, kept[1].ClusterID, kept[2].ClusterID}
+	want := []string{"c", "b", "d"}
+	for i := range want {
+		if gotIDs[i] != want[i] {
+			t.Fatalf("ranking = %v, want %v", gotIDs, want)
+		}
+	}
+	// Cutoff (last kept) is what the CLI logs alongside the drop count.
+	cutoff := kept[len(kept)-1]
+	if cutoff.DistinctSessions != 6 || cutoff.TotalIncidents != 50 {
+		t.Errorf("cutoff = %d sessions / %d incidents, want 6 / 50", cutoff.DistinctSessions, cutoff.TotalIncidents)
+	}
+}
+
+func TestTopClustersKeepsAllWhenUnsetOrUnderCap(t *testing.T) {
+	clusters := []Cluster{
+		{ClusterID: "a", DistinctSessions: 9},
+		{ClusterID: "b", DistinctSessions: 4},
+	}
+	for _, n := range []int{0, -1, 2, 5} {
+		kept, dropped := TopClusters(clusters, n)
+		if dropped != 0 || len(kept) != len(clusters) {
+			t.Errorf("n=%d: kept %d, dropped %d; want all kept, 0 dropped", n, len(kept), dropped)
+		}
+	}
+}
