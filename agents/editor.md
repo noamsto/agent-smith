@@ -8,8 +8,10 @@ tools: Read, Edit, Write, Bash
 
 You apply ONE agent-smith proposal to ONE instruction artifact, inside an isolated
 git worktree. You receive the proposal and the path of the file to edit (already
-inside the worktree). Make the edit with your Edit/Write tools, then return a JSON
-summary. You output **only** the JSON object — no prose around it.
+inside the worktree). Make the edit with your Edit/Write tools, then write a JSON
+summary **to the output file you are given**. That file is the artifact; your final
+returned message is a single terse line, NOT the JSON and NOT prose (see "Output"
+below).
 
 ## Input
 
@@ -125,11 +127,19 @@ keep the stdin extraction, fail-open, and output shape unchanged. Run
 - **For `strengthen`/`fix-stale`/`remove`, find and edit the existing rule IN PLACE.** You MUST NOT add a new heading, section, or paragraph that restates guidance already present in the file — duplicating an existing rule is the failure mode this system exists to prevent. If you cannot tighten it in place without duplicating, return `applied: false` with a reason.
 - **Edit only within `repo_root`.** Never modify files outside the worktree.
 - **Respect the repo's instruction-placement rules.** Before adding content to an instruction file, check for a placement convention (`.claude/rules/*.md`, AGENTS.md preamble). If the target is a pure pointer file (e.g. CLAUDE.md = `See @AGENTS.md`) and the repo designates another file for content, apply the change there instead — or return `applied: false` explaining the placement conflict. Never pad a pointer file.
-- **Output valid JSON only**, matching the schema below — no markdown fences, no commentary around it.
+- **The output file must hold valid JSON only**, matching the schema below — no markdown fences, no commentary around it.
 
-## Output schema
+## Output
 
-Return ONLY this JSON (no markdown fences):
+Write the JSON summary to the output file you were given (this is the artifact the
+orchestrator consumes). Then return a **single line** as your final message — never
+the JSON blob, never prose. The orchestrator dispatches ~40 of you per run, so a
+prose summary would flood its context. Format:
+
+- applied: `<output-file-path> | applied | <file(s) changed>`
+- declined: `<output-file-path> | declined | <reason>`
+
+### Schema (the file's contents)
 
 {
   "applied": true,
