@@ -33,11 +33,14 @@ one. This avoids the guaranteed conflict of N PRs all editing the same file.
    also runs the **pending-work dedup gate**: a proposal whose artifact+behavior
    already has an open agent-smith PR or an unresolved reason-log entry is marked
    `skip-duplicate` (with a `supersedes` field) instead of opening a second
-   conflicting PR. Surface these in the final report — do not silently drop them.
+   conflicting PR. `confidence: low` proposals are dropped as `skip-low-confidence`
+   by default — pass `--include-low-confidence` only if the user asks to apply
+   weakly-evidenced fixes. Surface every `skip-*` entry in the final report — do not
+   silently drop them.
 2. Determine the target **groups**: if an id was given, the `group_id` of that
    entry in `apply-plan.json` (read with `jq`); else every distinct `group_id`
-   among entries with `status == "ready"`. `skip-duplicate` and the other `skip-*`
-   statuses are not targets.
+   among entries with `status == "ready"`. `skip-duplicate`, `skip-low-confidence`,
+   and the other `skip-*` statuses are not targets.
 3. For each target group id:
    a. `applier open --plan apply-plan.json --group <gid>` → capture line 1 as `$WT`
       (worktree), line 2 as `$FILE`, and lines 3+ as the group's proposal ids in

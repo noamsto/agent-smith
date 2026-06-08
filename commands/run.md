@@ -9,8 +9,10 @@ order by invoking the sibling skills with the Skill tool, each to completion:
 1. **agent-smith:mine** (pass `$ARGUMENTS` through — bare = scoped to the repo
    you're launched in; `all` = cross-repo, which pauses after mine for a scope
    decision before continuing)
-2. **agent-smith:propose**
-3. **agent-smith:apply** (no id → every ready group; one PR per artifact group)
+2. **agent-smith:propose** (each Oracle proposal then faces a **skeptic** pass that
+   refutes it against the real repo; refuted proposals are dropped before assembly)
+3. **agent-smith:apply** (no id → every ready group; one PR per artifact group;
+   `confidence: low` proposals are dropped by default)
 
 Each phase carries its own step-zero bootstrap; do not skip it. If a phase fails
 outright, stop and report; a skipped group inside `apply` is not a failure.

@@ -22,14 +22,16 @@ func TestPrepareStatuses(t *testing.T) {
 	  {"id":"p-unresolved","implicated_artifact":"/nonexistent-xyz/C.md","fix_type":"add",
 	   "evidence":["s1:1"],"diagnosis":"d","proposed_change":"c","confidence":"high","reason_log":"r"},
 	  {"id":"p-skip","implicated_artifact":"` + existing + `#x","fix_type":"skip",
-	   "evidence":["s1:1"],"diagnosis":"d","proposed_change":"","confidence":"high","reason_log":"skipped: already handled by harness"}
+	   "evidence":["s1:1"],"diagnosis":"d","proposed_change":"","confidence":"high","reason_log":"skipped: already handled by harness"},
+	  {"id":"p-low","implicated_artifact":"` + existing + `#x","fix_type":"strengthen",
+	   "evidence":["s1:1"],"diagnosis":"d","proposed_change":"c","confidence":"low","reason_log":"r"}
 	]`
 	pf := filepath.Join(t.TempDir(), "proposals.json")
 	if err := os.WriteFile(pf, []byte(proposals), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	plan, err := Prepare(pf, "", DedupConfig{})
+	plan, err := Prepare(pf, "", DedupConfig{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,10 +45,22 @@ func TestPrepareStatuses(t *testing.T) {
 		"p-strengthen-missing": StatusMissingFile,
 		"p-unresolved":         StatusUnresolved,
 		"p-skip":               StatusDeclined,
+		"p-low":                StatusLowConfidence,
 	}
 	for id, w := range want {
 		if got[id] != w {
 			t.Errorf("%s: status = %q, want %q", id, got[id], w)
+		}
+	}
+
+	// --include-low-confidence override keeps the low proposal actionable.
+	planInc, err := Prepare(pf, "", DedupConfig{}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range planInc {
+		if e.ProposalID == "p-low" && e.Status != StatusReady {
+			t.Errorf("p-low with includeLowConfidence: status = %q, want %q", e.Status, StatusReady)
 		}
 	}
 	// deterministic sort by ProposalID
@@ -72,7 +86,7 @@ func TestPrepareGroupsByArtifact(t *testing.T) {
 	if err := os.WriteFile(pf, []byte(proposals), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	plan, err := Prepare(pf, "", DedupConfig{})
+	plan, err := Prepare(pf, "", DedupConfig{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +135,7 @@ func TestPrepareEscalationRoutesToSettingsRepo(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	plan, err := Prepare(pf, settings, DedupConfig{})
+	plan, err := Prepare(pf, settings, DedupConfig{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +178,7 @@ func TestPrepareEscalationNoSettingsRepoUnrouted(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	plan, err := Prepare(pf, "", DedupConfig{})
+	plan, err := Prepare(pf, "", DedupConfig{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +207,7 @@ func TestPrepareEscalationSettingsRepoUnresolvableUnrouted(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	plan, err := Prepare(pf, t.TempDir(), DedupConfig{}) // a dir that is not a git repo
+	plan, err := Prepare(pf, t.TempDir(), DedupConfig{}, false) // a dir that is not a git repo
 	if err != nil {
 		t.Fatal(err)
 	}

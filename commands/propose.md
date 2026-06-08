@@ -29,7 +29,22 @@ skill (Skill tool) first.
      and return only your one-line final message — not the JSON. Read the per-cluster
      file directly — do NOT pass the whole index."
    - If the Oracle errors or writes no file, log a skip and continue.
-3. `analyst assemble --proposals-dir /tmp/agent-smith-proposals-in --out proposals.json --reason-log-dir reason-log`
+3. **Skeptic pass — one per Oracle proposal.** A single Oracle pass turns directly
+   into human triage; an unverified inference (e.g. "no guidance exists" judged
+   without resolving `@AGENTS.md`) propagates to wrong PRs. For each `p-<i>.json`
+   the Oracle wrote, dispatch the **agent-smith:skeptic** subagent (Agent tool):
+   "Read the proposal at `/tmp/agent-smith-proposals-in/p-<i>.json` and follow your
+   instructions to refute it against the actual repo. Write the verdict JSON to
+   `/tmp/agent-smith-proposals-in/v-<i>.json` and return only your one-line final
+   message — not the JSON."
+   - If the skeptic returns `verdict: refuted`, **drop** that proposal: delete
+     `p-<i>.json` so it never reaches assembly. If it errors or writes no verdict,
+     treat that as refuted (default-drop on unverified) and drop the proposal too.
+     Fold any `caveats` from an `upheld` verdict into the kept proposal's
+     `reason_log` so they ride into the PR.
+   - Record every dropped proposal (id + skeptic `reason`) for the report — surface
+     them, never silently discard.
+4. `analyst assemble --proposals-dir /tmp/agent-smith-proposals-in --out proposals.json --reason-log-dir reason-log`
    (Pass `--date <today>` only if needed; default is today.)
-4. Report the assembled proposals (id, fix_type, confidence). This phase is
-   review-only — no edits, no PRs.
+5. Report the assembled proposals (id, fix_type, confidence) AND the proposals the
+   skeptic refuted (id + reason). This phase is review-only — no edits, no PRs.

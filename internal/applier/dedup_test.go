@@ -64,7 +64,7 @@ func TestDedupPriorReasonLog(t *testing.T) {
 	   "evidence":["s1:1"],"diagnosis":"d","proposed_change":"c","confidence":"high","reason_log":"r"}
 	]`)
 
-	plan, err := Prepare(pf, "", DedupConfig{ReasonLogDir: rl})
+	plan, err := Prepare(pf, "", DedupConfig{ReasonLogDir: rl}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func TestDedupResolvedReasonLogNotDeduped(t *testing.T) {
 	   "evidence":["s1:1"],"diagnosis":"d","proposed_change":"c","confidence":"high","reason_log":"r"}
 	]`)
 
-	plan, err := Prepare(pf, "", DedupConfig{ReasonLogDir: rl})
+	plan, err := Prepare(pf, "", DedupConfig{ReasonLogDir: rl}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func TestDedupOpenPR(t *testing.T) {
 
 	// The proposal pushes to its group branch (artifact-derived); discover it from a
 	// dedup-free run, then stand up an open PR on that branch.
-	base, err := Prepare(pf, "", DedupConfig{})
+	base, err := Prepare(pf, "", DedupConfig{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func TestDedupOpenPR(t *testing.T) {
 	listPRs := func() ([]PullRequest, error) {
 		return []PullRequest{{Number: 12, Title: "t", HeadRefName: branch, URL: "https://github.com/noamsto/nix-config/pull/12"}}, nil
 	}
-	plan, err := Prepare(pf, "", DedupConfig{ListOpenPRs: listPRs})
+	plan, err := Prepare(pf, "", DedupConfig{ListOpenPRs: listPRs}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +162,7 @@ func TestDedupDistinctNotDeduped(t *testing.T) {
 	listPRs := func() ([]PullRequest, error) {
 		return []PullRequest{{Number: 99, HeadRefName: "docs/agent-smith-unrelated", URL: "u"}}, nil
 	}
-	plan, err := Prepare(pf, "", DedupConfig{ListOpenPRs: listPRs, ReasonLogDir: rl})
+	plan, err := Prepare(pf, "", DedupConfig{ListOpenPRs: listPRs, ReasonLogDir: rl}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
