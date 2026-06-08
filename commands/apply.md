@@ -56,6 +56,13 @@ one. This avoids the guaranteed conflict of N PRs all editing the same file.
       the JSON. Do NOT dispatch the group's editors in parallel.
    c. **Verify gate** on `git -C "$WT" diff` (the combined group diff):
       - Always run the `deslop` skill/review on the diff.
+      - **Placement check (backstops the editor's own placement guard):** read the
+        target repo's instruction-placement rules from the worktree —
+        `cat "$WT"/.claude/rules/*.md` and the `AGENTS.md` preamble (skip silently if
+        absent; not every repo has them) — and pass them to the reviewer as explicit
+        criteria. FLAG any diff that violates them, e.g. padding a CLAUDE.md the repo
+        mandates stay a pure pointer to `@AGENTS.md`, or adding content to a file the
+        rules designate for another location.
       - If the diff touches a hook, `settings.json`, or a Nix `*.nix` overlay, also
         run `find-bugs` and `code-review`.
       - If a reviewer reports a **substantive** (Critical/Important) finding, dispatch
