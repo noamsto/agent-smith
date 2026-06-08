@@ -33,7 +33,9 @@ Editor + review, ~50k tokens), and ask the user which scope to proceed with
 (everything / one repo / top-N) before any propose/apply phase runs.
 
 1. `extractor --out incidents.db` (plus `--corpus` per the scope rule)
-2. `analyst cluster --db incidents.db --out clusters.json --min-sessions 3 --max-incidents-per-cluster 50`
-   (then the artifact filter per the scope rule)
+2. `analyst cluster --db incidents.db --out clusters.json --max-incidents-per-cluster 50`
+   (then the artifact filter per the scope rule). `--min-sessions` defaults to 5;
+   add `--top N` to cap the Oracle fleet at the N highest-signal clusters when the
+   user picks a top-N scope above (the command logs the drop count and cutoff).
 3. Print a one-line-per-cluster summary (signal_type, artifact basename,
    distinct_sessions, total_incidents, sampled count) using `jq`.
