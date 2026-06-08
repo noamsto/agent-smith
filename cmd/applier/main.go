@@ -144,15 +144,14 @@ func runSubmit(args []string) {
 		items = append(items, applier.GroupItem{Proposal: prop, Editor: ed})
 	}
 
-	defer func() {
-		if derr := applier.Drop(tg.RepoRoot, *wt); derr != nil {
-			fmt.Fprintln(os.Stderr, "warning: drop worktree:", derr)
-		}
-	}()
-
 	url, skipped, err := applier.Submit(applier.Run, tg, *wt, items, *reasonLog, *draft)
+	if _, derr := applier.CleanupAfterSubmit(tg.RepoRoot, *wt, err); derr != nil {
+		fmt.Fprintln(os.Stderr, "warning: drop worktree:", derr)
+	}
 	if err != nil {
-		_ = applier.Drop(tg.RepoRoot, *wt) // defer below is skipped by os.Exit in fatal()
+		// The worktree holds the applied edit; report its path so the
+		// orchestrator can retry from it rather than losing the editor's work.
+		fmt.Fprintf(os.Stderr, "submit failed; worktree preserved at %s\n", *wt)
 		fatal(err)
 	}
 	if skipped {

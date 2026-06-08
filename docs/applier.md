@@ -32,6 +32,14 @@ aborts instead of opening a malformed PR. The PR title/body enumerate every
 proposal the group carries (id + summary), and each proposal's reason-log entry
 gets the shared PR link.
 
+Commits run with `PRE_COMMIT_ALLOW_NO_CONFIG=1` so a fresh worktree lacking
+`.pre-commit-config.yaml` does not hard-fail a repo whose commit hook invokes
+pre-commit. When `submit` fails, the worktree is **preserved** (it holds the
+applied edit) and its path is printed, so the orchestrator can retry without
+losing the editor's work; it is dropped only on success or a clean no-op. `open`
+**reuses** an orphan branch left empty by such a failed run (resetting it onto
+the base), and refuses to reset a branch that carries its own commits.
+
 ## Commands
 
 ```bash

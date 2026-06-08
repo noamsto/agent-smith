@@ -3,6 +3,7 @@ package applier
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -19,6 +20,10 @@ type runner func(dir, name string, args ...string) ([]byte, error)
 func execRunner(dir, name string, args ...string) ([]byte, error) {
 	c := exec.Command(name, args...)
 	c.Dir = dir
+	// A fresh worktree may lack .pre-commit-config.yaml while the repo's
+	// commit hook still invokes pre-commit; without this the hook hard-fails
+	// and destroys the run. Harmless when no pre-commit hook is installed.
+	c.Env = append(os.Environ(), "PRE_COMMIT_ALLOW_NO_CONFIG=1")
 	return c.CombinedOutput()
 }
 
