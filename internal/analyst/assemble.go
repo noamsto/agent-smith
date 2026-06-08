@@ -25,7 +25,7 @@ type Proposal struct {
 
 var validFixTypes = map[string]bool{
 	"add": true, "strengthen": true, "fix-stale": true,
-	"remove": true, "escalate-out-of-instructions": true,
+	"remove": true, "escalate-out-of-instructions": true, "skip": true,
 }
 var validConfidence = map[string]bool{"high": true, "medium": true, "low": true}
 
@@ -73,7 +73,7 @@ func (p Proposal) Validate() error {
 		return fmt.Errorf("%s: missing evidence", p.ID)
 	case p.Diagnosis == "":
 		return fmt.Errorf("%s: missing diagnosis", p.ID)
-	case p.ProposedChange == "":
+	case p.ProposedChange == "" && p.FixType != "skip": // a skip declines, so it has nothing to change
 		return fmt.Errorf("%s: missing proposed_change", p.ID)
 	case p.ReasonLog == "":
 		return fmt.Errorf("%s: missing reason_log", p.ID)

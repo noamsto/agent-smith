@@ -95,7 +95,7 @@ Cost scales with the number of glitches, not the size of your history.
 
 ## What it actually changes
 
-Every fix is one of five moves. The interesting one is the last.
+Every fix is one of six moves. The interesting one is the last.
 
 | Fix | When | What it does |
 |-----|------|--------------|
@@ -104,6 +104,7 @@ Every fix is one of five moves. The interesting one is the last.
 | **fix-stale** | a flag/API/file the rule names has changed | correct the reference |
 | **remove** | the guidance contradicts itself or causes the glitch | cut it |
 | **escalate-out-of-instructions** | a *prose* rule keeps failing no matter how loud | stop asking nicely — propose a **hook** |
+| **skip** | the current harness/system prompt already enforces it | decline — redundant instructions are their own glitch source |
 
 That last move is the whole philosophy: when a rule is reliably ignored, the
 answer isn't a louder rule, it's **defining the error out of existence** —

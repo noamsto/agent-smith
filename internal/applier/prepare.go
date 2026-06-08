@@ -13,6 +13,7 @@ const (
 	StatusReady       = "ready"
 	StatusUnresolved  = "skip-unresolved"
 	StatusMissingFile = "skip-missing-file"
+	StatusDeclined    = "skip-declined"
 )
 
 // PlanEntry is one resolved proposal in apply-plan.json. Status gates whether the
@@ -51,6 +52,11 @@ func Prepare(proposalsPath string) ([]PlanEntry, error) {
 	plan := make([]PlanEntry, 0, len(props))
 	for _, p := range props {
 		e := PlanEntry{ProposalID: p.ID}
+		if p.FixType == "skip" { // fix_type=skip: declined, no edit — target fields stay zero
+			e.Status = StatusDeclined
+			plan = append(plan, e)
+			continue
+		}
 		tg, err := Resolve(p)
 		if err != nil {
 			e.Status = StatusUnresolved
