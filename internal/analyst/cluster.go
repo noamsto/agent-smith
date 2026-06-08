@@ -43,7 +43,10 @@ func clusterSQL(minSessions, maxIncidents int) string {
 	return fmt.Sprintf(`
 WITH exploded AS (
   SELECT incident_id, session_id, ts, confidence, detail, "window", signal_type,
-         unnest(CAST(candidates AS VARCHAR[])) AS artifact
+         -- canonicalize: a candidate under a git worktree (<repo>/.worktrees/<name>/…,
+         -- worktrunk's layout) maps back to the repo-root artifact, so worktree copies
+         -- cluster with the canonical file instead of fragmenting.
+         regexp_replace(unnest(CAST(candidates AS VARCHAR[])), '/\.worktrees/[^/]+/', '/') AS artifact
   FROM incidents
 ),
 gated AS (
@@ -105,31 +108,35 @@ func clusterRows(ctx context.Context, db string, minSessions, maxIncidents int) 
 	return rows, nil
 }
 
-// ClusterDB runs the clustering query, then reads each implicated artifact's
-// current content from disk, returning fully-populated clusters.
-func ClusterDB(ctx context.Context, db string, minSessions, maxIncidents int) ([]Cluster, error) {
+// ClusterDB runs the clustering query (artifacts already canonicalized to repo
+// roots), then reads each artifact's current content from disk. Clusters whose
+// canonical artifact no longer exists — a deleted worktree, a removed file — are
+// dropped; dropped is how many were dropped, for the caller to surface.
+func ClusterDB(ctx context.Context, db string, minSessions, maxIncidents int) (clusters []Cluster, dropped int, err error) {
 	rows, err := clusterRows(ctx, db, minSessions, maxIncidents)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	clusters := make([]Cluster, 0, len(rows))
+	clusters = make([]Cluster, 0, len(rows))
 	for _, r := range rows {
-		c := Cluster{
+		data, err := os.ReadFile(r.Artifact)
+		if err != nil {
+			dropped++
+			continue
+		}
+		s := string(data)
+		clusters = append(clusters, Cluster{
 			ClusterID:        r.SignalType + "::" + r.Artifact,
 			SignalType:       r.SignalType,
 			Artifact:         r.Artifact,
+			ArtifactContent:  &s,
+			ArtifactExists:   true,
 			DistinctSessions: r.DistinctSessions,
 			TotalIncidents:   r.TotalIncidents,
 			Incidents:        r.Incidents,
-		}
-		if data, err := os.ReadFile(r.Artifact); err == nil {
-			s := string(data)
-			c.ArtifactContent = &s
-			c.ArtifactExists = true
-		}
-		clusters = append(clusters, c)
+		})
 	}
-	return clusters, nil
+	return clusters, dropped, nil
 }
 
 // WriteClusters marshals clusters to outPath as indented JSON.

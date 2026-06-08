@@ -38,10 +38,13 @@ func runCluster(args []string) {
 	maxIncidents := fs.Int("max-incidents-per-cluster", 50, "cap incidents per cluster fed to the Oracle (session-stratified sample); 0 = uncapped")
 	_ = fs.Parse(args)
 
-	clusters, err := analyst.ClusterDB(context.Background(), *db, *minSessions, *maxIncidents)
+	clusters, dropped, err := analyst.ClusterDB(context.Background(), *db, *minSessions, *maxIncidents)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "analyst cluster:", err)
 		os.Exit(1)
+	}
+	if dropped > 0 {
+		fmt.Fprintf(os.Stderr, "dropped %d cluster(s) whose canonical artifact no longer exists\n", dropped)
 	}
 	if err := analyst.WriteClusters(clusters, *out); err != nil {
 		fmt.Fprintln(os.Stderr, "analyst cluster:", err)
