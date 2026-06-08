@@ -10,12 +10,12 @@ order by invoking the sibling skills with the Skill tool, each to completion:
    you're launched in; `all` = cross-repo, which pauses after mine for a scope
    decision before continuing)
 2. **agent-smith:propose**
-3. **agent-smith:apply** (no id → every ready proposal)
+3. **agent-smith:apply** (no id → every ready group; one PR per artifact group)
 
 Each phase carries its own step-zero bootstrap; do not skip it. If a phase fails
-outright, stop and report; a skipped proposal inside `apply` is not a failure.
+outright, stop and report; a skipped group inside `apply` is not a failure.
 
 After all phases, print the final report table:
-`proposal_id | repo | fix_type | verify verdict | PR link or skip reason`.
+`group_id | repo | proposal ids | verify verdict | PR link or skip reason`.
 All PRs are **drafts** — tell the user to review / `nix build` / merge them at
 their leisure.

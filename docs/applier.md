@@ -6,21 +6,31 @@ own the implicated artifacts, and records the PR link in the reason-log.
 ## Pipeline
 
 ```
-proposals.json ─► applier prepare ─► apply-plan.json ─► (per ready entry, RUNBOOK loop)
-                                                          open → editor subagent
+proposals.json ─► applier prepare ─► apply-plan.json ─► (per group, RUNBOOK loop)
+                                                          open → editor subagent ×N (same worktree)
                                                           → verify (deslop/find-bugs)
-                                                          → submit → PR + reason-log link
+                                                          → submit → one PR + reason-log link per proposal
 ```
+
+The unit of work is a **group**: every ready proposal that targets the same
+artifact in the same repo shares one worktree, one branch, and one PR (issue #9).
+One-PR-per-proposal against a shared file is a guaranteed conflict — three PRs all
+appending to the same one-line `CLAUDE.md` cannot all merge. A single proposal is
+just a group of one, so the common case is unchanged.
 
 The binary (`prepare`/`open`/`submit`) is deterministic; the **editor**
 (`agents/editor.md`) and **verify** steps are Claude Code subagent
-dispatches driven by `fixtures/applier/RUNBOOK.md`. Every edit happens in an
-isolated `git worktree` (branched from `origin/<base>` when that ref exists, so
-unpushed local commits never leak into a PR), so live checkouts are never touched.
-Phase 1 always opens a PR — never an auto-commit. Before pushing, `submit` runs a
-deterministic **preflight**: a single-prefix title lint, exactly one commit over
-the base, and no diff files beyond the editor's `files_changed` — failing any
-check aborts instead of opening a malformed PR.
+dispatches driven by `fixtures/applier/RUNBOOK.md`. Each group gets one isolated
+`git worktree` (branched from `origin/<base>` when that ref exists, so unpushed
+local commits never leak into a PR); the editor is dispatched once per proposal
+**into that same worktree, in plan order**, so each edit sees the prior one and
+they don't clobber each other. Live checkouts are never touched. Phase 1 always
+opens a PR — never an auto-commit. Before pushing, `submit` runs a deterministic
+**preflight**: a single-prefix title lint, exactly one commit over the base, and no
+diff files beyond the union of every editor's `files_changed` — failing any check
+aborts instead of opening a malformed PR. The PR title/body enumerate every
+proposal the group carries (id + summary), and each proposal's reason-log entry
+gets the shared PR link.
 
 ## Commands
 
@@ -28,29 +38,37 @@ check aborts instead of opening a malformed PR.
 nix develop
 go run ./cmd/applier prepare --proposals proposals.json --out apply-plan.json
 go run ./cmd/applier suggest --plan apply-plan.json --proposals proposals.json --out suggestions.md  # dry run: review-only, no edits/PRs
-go run ./cmd/applier open    --plan apply-plan.json --id <proposal-id>     # → worktree + file path
-#   (dispatch the editor subagent → editor-result.json; run the verify gate)
+go run ./cmd/applier open    --plan apply-plan.json --group <group-id>     # → worktree + file + proposal ids
+#   (dispatch the editor subagent once per id into the worktree → editor-result-<id>.json; run the verify gate)
 go run ./cmd/applier submit  --plan apply-plan.json --proposals proposals.json \
-    --id <proposal-id> --worktree <path> --editor-result editor-result.json \
+    --group <group-id> --worktree <path> --editor-result-dir <dir-of-editor-result-<id>.json> \
     --reason-log-dir reason-log
 ```
+
+`open` prints the worktree path (line 1), the file every proposal in the group
+edits (line 2), and the group's proposal ids in apply order (lines 3+). `submit`
+reads `editor-result-<id>.json` for each of those ids from `--editor-result-dir`.
 
 ## Dry run
 
 `suggest` renders a side-effect-free markdown index of what the loop *would* do —
 NO git, worktrees, edits, or PRs. It joins the resolved plan with the proposals and
-writes one section per `ready` proposal (where it would land — branch/base/repo —
-plus the diagnosis and the Oracle's proposed change), followed by a list of skipped
-entries with their status. Read `suggestions.md` to review the whole batch before
-running the real `open`/`submit` loop.
+writes one section per **group** (one PR: where it would land — branch/base/repo —
+and the proposals it carries, each with its diagnosis and the Oracle's proposed
+change), followed by a list of skipped entries with their status. Read
+`suggestions.md` to review the whole batch before running the real `open`/`submit`
+loop.
 
-## Resolution & status
+## Resolution, grouping & status
 
 `prepare` resolves each `implicated_artifact` (`path#section`) to its owning repo
-(`git rev-parse`), owner class (nix-config/personal/factify-inc), and a branch
-`<type>/agent-smith-<slug>` (`docs` for prose fixes, `chore` for escalate). Status:
+(`git rev-parse`) and owner class (nix-config/personal/factify-inc). Ready entries
+are then **grouped** by their resolved `(repo, artifact)` pair; each group gets a
+shared `group_id` and a branch `<type>/agent-smith-<repo-artifact-slug>` (`docs` for
+prose fixes, `chore` when any member is an escalate). Status:
 `ready`, `skip-unresolved` (no git repo), or `skip-missing-file`
 (`strengthen`/`fix-stale`/`remove` on an absent file — `add` is allowed to create).
+Skipped entries belong to no group.
 
 ## Eval
 

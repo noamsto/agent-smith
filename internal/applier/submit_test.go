@@ -58,18 +58,23 @@ func sampleProposal() analyst.Proposal {
 	}
 }
 
+// one wraps a single proposal+editor result as a group of one — the common case.
+func one(p analyst.Proposal, ed EditorResult) []GroupItem {
+	return []GroupItem{{Proposal: p, Editor: ed}}
+}
+
 func TestCommitMessageNoDoublePrefix(t *testing.T) {
 	// An editor summary that is already a conventional-commit subject must be
 	// used as-is — not given a second type prefix ("chore: feat(...): ...",
 	// the malformed title nix-config#2 shipped with).
 	ed := EditorResult{Applied: true, Summary: "feat(claude-code): enforce skeleton-first reads"}
-	title, _ := commitMessage(sampleProposal(), ed)
+	title, _ := singleMessage(sampleProposal(), ed)
 	if title != "feat(claude-code): enforce skeleton-first reads" {
 		t.Errorf("title = %q; want the editor subject unchanged", title)
 	}
 	// A plain imperative summary still gets the fix-type prefix.
 	ed.Summary = "raise skeleton-first rule"
-	title, _ = commitMessage(sampleProposal(), ed)
+	title, _ = singleMessage(sampleProposal(), ed)
 	if title != "docs: raise skeleton-first rule" {
 		t.Errorf("title = %q; want a docs: prefix", title)
 	}
@@ -81,8 +86,8 @@ func TestSubmitPreflightRejectsExtraCommits(t *testing.T) {
 	// Preflight must abort BEFORE anything is pushed.
 	f := &fakeRunner{status: " M CLAUDE.md", revListCount: "3"}
 	tg := Target{BranchName: "docs/agent-smith-glitch-skeleton", Base: "main"}
-	_, skipped, err := Submit(f.run, tg, "/wt", sampleProposal(),
-		EditorResult{Applied: true, Summary: "s"}, t.TempDir(), false)
+	_, skipped, err := Submit(f.run, tg, "/wt",
+		one(sampleProposal(), EditorResult{Applied: true, Summary: "s"}), t.TempDir(), false)
 	if err == nil || skipped {
 		t.Fatalf("expected preflight error, got skipped=%v err=%v", skipped, err)
 	}
@@ -100,8 +105,8 @@ func TestSubmitPreflightRejectsSurpriseFiles(t *testing.T) {
 	// The branch diff must not touch files the editor didn't report.
 	f := &fakeRunner{status: " M CLAUDE.md", diffNames: "CLAUDE.md\nUNRELATED.txt\n"}
 	tg := Target{BranchName: "docs/agent-smith-glitch-skeleton", Base: "main"}
-	_, skipped, err := Submit(f.run, tg, "/wt", sampleProposal(),
-		EditorResult{Applied: true, Summary: "s", FilesChanged: []string{"CLAUDE.md"}}, t.TempDir(), false)
+	_, skipped, err := Submit(f.run, tg, "/wt",
+		one(sampleProposal(), EditorResult{Applied: true, Summary: "s", FilesChanged: []string{"CLAUDE.md"}}), t.TempDir(), false)
 	if err == nil || skipped {
 		t.Fatalf("expected preflight error, got skipped=%v err=%v", skipped, err)
 	}
@@ -116,7 +121,7 @@ func TestSubmitPreflightRejectsSurpriseFiles(t *testing.T) {
 }
 
 func TestDoublePrefixLint(t *testing.T) {
-	// The preflight title lint is the backstop should commitMessage regress.
+	// The preflight title lint is the backstop should the message builder regress.
 	for title, double := range map[string]bool{
 		"chore: feat(claude-code): enforce skeleton-first reads": true,
 		"docs: fix: something":                       true,
@@ -140,7 +145,7 @@ func TestSubmitCreatesPR(t *testing.T) {
 	tg := Target{RepoRoot: "/r", BranchName: "docs/agent-smith-glitch-skeleton", Base: "main"}
 	ed := EditorResult{Applied: true, FilesChanged: []string{"CLAUDE.md"}, Summary: "raise skeleton-first rule"}
 
-	url, skipped, err := Submit(f.run, tg, "/wt", sampleProposal(), ed, dir, false)
+	url, skipped, err := Submit(f.run, tg, "/wt", one(sampleProposal(), ed), dir, false)
 	if err != nil || skipped {
 		t.Fatalf("Submit: url=%q skipped=%v err=%v", url, skipped, err)
 	}
@@ -174,10 +179,94 @@ func TestSubmitCreatesPR(t *testing.T) {
 	}
 }
 
+func TestSubmitGroupedPR(t *testing.T) {
+	// Two proposals on the same artifact → one commit, one PR enumerating both,
+	// the union of files_changed allowed by preflight, and a PR link in EACH
+	// reason-log entry.
+	dir := t.TempDir()
+	for _, id := range []string{"p-a", "p-b"} {
+		entry := strings.Replace(sampleEntry, "# glitch-skeleton", "# "+id, 1)
+		if err := os.WriteFile(filepath.Join(dir, "2026-06-01-"+id+".md"), []byte(entry), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f := &fakeRunner{status: " M CLAUDE.md", prURL: "https://github.com/x/y/pull/9", diffNames: "CLAUDE.md\n"}
+	tg := Target{RepoRoot: "/r", FilePath: "/r/CLAUDE.md", BranchName: "docs/agent-smith-r-claude", Base: "main"}
+	pa := sampleProposal()
+	pa.ID = "p-a"
+	pb := sampleProposal()
+	pb.ID = "p-b"
+	items := []GroupItem{
+		{Proposal: pa, Editor: EditorResult{Applied: true, FilesChanged: []string{"CLAUDE.md"}, Summary: "raise skeleton rule"}},
+		{Proposal: pb, Editor: EditorResult{Applied: true, FilesChanged: []string{"CLAUDE.md"}, Summary: "add commit rule"}},
+	}
+
+	url, skipped, err := Submit(f.run, tg, "/wt", items, dir, false)
+	if err != nil || skipped {
+		t.Fatalf("Submit: url=%q skipped=%v err=%v", url, skipped, err)
+	}
+	last := f.calls[len(f.calls)-1]
+	joined := strings.Join(last, " ")
+	if !strings.Contains(joined, "apply 2 agent-smith proposals to CLAUDE.md") {
+		t.Errorf("grouped title missing from gh args: %q", joined)
+	}
+	if !strings.Contains(joined, "p-a") || !strings.Contains(joined, "p-b") {
+		t.Errorf("PR body must enumerate both proposals: %q", joined)
+	}
+	// only one commit for the whole group.
+	commits := 0
+	for _, c := range f.calls {
+		if c[0] == "git" && c[1] == "commit" {
+			commits++
+		}
+	}
+	if commits != 1 {
+		t.Errorf("grouped submit made %d commits, want 1", commits)
+	}
+	// each reason-log entry got the PR link.
+	for _, id := range []string{"p-a", "p-b"} {
+		got, err := os.ReadFile(filepath.Join(dir, "2026-06-01-"+id+".md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(got), "**PR:** https://github.com/x/y/pull/9") {
+			t.Errorf("%s reason-log not linked:\n%s", id, got)
+		}
+	}
+}
+
+func TestSubmitGroupSkipsDeclinedMembers(t *testing.T) {
+	// A declined member is dropped from the PR; the rest still ship.
+	dir := t.TempDir()
+	entry := strings.Replace(sampleEntry, "# glitch-skeleton", "# p-a", 1)
+	if err := os.WriteFile(filepath.Join(dir, "2026-06-01-p-a.md"), []byte(entry), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f := &fakeRunner{status: " M CLAUDE.md", prURL: "https://github.com/x/y/pull/9", diffNames: "CLAUDE.md\n"}
+	tg := Target{RepoRoot: "/r", FilePath: "/r/CLAUDE.md", BranchName: "docs/agent-smith-r-claude", Base: "main"}
+	pa := sampleProposal()
+	pa.ID = "p-a"
+	pb := sampleProposal()
+	pb.ID = "p-b"
+	items := []GroupItem{
+		{Proposal: pa, Editor: EditorResult{Applied: true, FilesChanged: []string{"CLAUDE.md"}, Summary: "s"}},
+		{Proposal: pb, Editor: EditorResult{Applied: false, Reason: "drifted"}},
+	}
+	url, skipped, err := Submit(f.run, tg, "/wt", items, dir, false)
+	if err != nil || skipped || url == "" {
+		t.Fatalf("Submit: url=%q skipped=%v err=%v", url, skipped, err)
+	}
+	// A single applied member uses the single-proposal title, not the grouped one.
+	last := strings.Join(f.calls[len(f.calls)-1], " ")
+	if strings.Contains(last, "apply") || !strings.Contains(last, "docs: s") {
+		t.Errorf("one applied member should use the single title: %q", last)
+	}
+}
+
 func TestSubmitSkipsWhenEditorDeclined(t *testing.T) {
 	f := &fakeRunner{}
-	_, skipped, err := Submit(f.run, Target{}, "/wt", sampleProposal(),
-		EditorResult{Applied: false, Reason: "content drifted"}, t.TempDir(), false)
+	_, skipped, err := Submit(f.run, Target{}, "/wt",
+		one(sampleProposal(), EditorResult{Applied: false, Reason: "content drifted"}), t.TempDir(), false)
 	if err != nil || !skipped {
 		t.Fatalf("expected skip, got skipped=%v err=%v", skipped, err)
 	}
@@ -189,7 +278,7 @@ func TestSubmitSkipsWhenEditorDeclined(t *testing.T) {
 func TestSubmitSkipsWhenNoDiff(t *testing.T) {
 	f := &fakeRunner{status: ""} // editor applied but produced no change
 	_, skipped, err := Submit(f.run, Target{BranchName: "b", Base: "main"}, "/wt",
-		sampleProposal(), EditorResult{Applied: true}, t.TempDir(), false)
+		one(sampleProposal(), EditorResult{Applied: true}), t.TempDir(), false)
 	if err != nil || !skipped {
 		t.Fatalf("expected skip on empty diff, got skipped=%v err=%v", skipped, err)
 	}
@@ -206,8 +295,8 @@ func TestSubmitErrorPaths(t *testing.T) {
 		t.Run(verb, func(t *testing.T) {
 			f := &fakeRunner{status: " M f", prURL: "https://github.com/x/y/pull/9", failVerb: verb}
 			tg := Target{BranchName: "docs/agent-smith-glitch-skeleton", Base: "main"}
-			_, skipped, err := Submit(f.run, tg, "/wt", sampleProposal(),
-				EditorResult{Applied: true, Summary: "s"}, t.TempDir(), false)
+			_, skipped, err := Submit(f.run, tg, "/wt",
+				one(sampleProposal(), EditorResult{Applied: true, Summary: "s"}), t.TempDir(), false)
 			if err == nil {
 				t.Fatalf("expected error when %q fails", verb)
 			}
@@ -229,8 +318,8 @@ func TestSubmitAppendPRLinkFailure(t *testing.T) {
 	// Successful run, but the reason-log dir has no matching entry → AppendPRLink errors.
 	f := &fakeRunner{status: " M f", prURL: "https://github.com/x/y/pull/9"}
 	tg := Target{BranchName: "docs/agent-smith-glitch-skeleton", Base: "main"}
-	url, skipped, err := Submit(f.run, tg, "/wt", sampleProposal(),
-		EditorResult{Applied: true, Summary: "s"}, t.TempDir(), false)
+	url, skipped, err := Submit(f.run, tg, "/wt",
+		one(sampleProposal(), EditorResult{Applied: true, Summary: "s"}), t.TempDir(), false)
 	if err == nil {
 		t.Fatal("expected error when reason-log entry is missing")
 	}
@@ -246,8 +335,8 @@ func TestSubmitNonURLGhOutput(t *testing.T) {
 	// gh stdout ends with the "Creating pull request..." line (empty prURL) → not a URL.
 	f := &fakeRunner{status: " M f", prURL: ""}
 	tg := Target{BranchName: "docs/agent-smith-glitch-skeleton", Base: "main"}
-	url, skipped, err := Submit(f.run, tg, "/wt", sampleProposal(),
-		EditorResult{Applied: true, Summary: "s"}, t.TempDir(), false)
+	url, skipped, err := Submit(f.run, tg, "/wt",
+		one(sampleProposal(), EditorResult{Applied: true, Summary: "s"}), t.TempDir(), false)
 	if err == nil {
 		t.Fatal("expected error when gh output is not a URL")
 	}
@@ -262,7 +351,7 @@ func TestSubmitNonURLGhOutput(t *testing.T) {
 func TestCommitMessageFallback(t *testing.T) {
 	p := sampleProposal()
 	p.Diagnosis = "first line of diagnosis\nsecond line"
-	title, body := commitMessage(p, EditorResult{}) // empty Summary
+	title, body := singleMessage(p, EditorResult{}) // empty Summary
 	if title != "docs: first line of diagnosis" {
 		t.Errorf("title = %q", title)
 	}
@@ -294,7 +383,7 @@ func TestSubmitDraftFlag(t *testing.T) {
 		tg := Target{RepoRoot: "/r", BranchName: "docs/agent-smith-glitch-skeleton", Base: "main"}
 		ed := EditorResult{Applied: true, FilesChanged: []string{"CLAUDE.md"}, Summary: "x"}
 
-		if _, _, err := Submit(f.run, tg, "/wt", sampleProposal(), ed, dir, draft); err != nil {
+		if _, _, err := Submit(f.run, tg, "/wt", one(sampleProposal(), ed), dir, draft); err != nil {
 			t.Fatalf("draft=%v: Submit: %v", draft, err)
 		}
 		last := f.calls[len(f.calls)-1]
