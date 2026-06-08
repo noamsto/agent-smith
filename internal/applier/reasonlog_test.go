@@ -10,6 +10,7 @@ import (
 const sampleEntry = `# glitch-skeleton
 
 **Artifact:** /g/CLAUDE.md#reading-code
+**Signal:** inefficiency
 **Fix type:** strengthen  **Confidence:** high  **Date:** 2026-06-01
 
 ## Diagnosis
@@ -27,6 +28,8 @@ make imperative
 fewer whole-file reads
 
 <!-- PR link appended by the applier; outcome appended by deja-vu -->
+
+<!-- outcome: open -->
 `
 
 func TestAppendPRLink(t *testing.T) {
@@ -46,8 +49,8 @@ func TestAppendPRLink(t *testing.T) {
 	if !strings.Contains(string(got), "**PR:** https://github.com/x/y/pull/7") {
 		t.Errorf("PR link not written:\n%s", got)
 	}
-	if !strings.Contains(string(got), "<!-- outcome appended by deja-vu -->") {
-		t.Error("deja-vu placeholder not left behind")
+	if !strings.Contains(string(got), "<!-- outcome: open -->") {
+		t.Error("outcome marker not left behind")
 	}
 	if strings.Contains(string(got), "appended by the applier") {
 		t.Error("applier placeholder should be consumed")

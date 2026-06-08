@@ -78,8 +78,6 @@ type reasonLogEntry struct {
 	resolved bool
 }
 
-const outcomePlaceholder = "<!-- outcome appended by deja-vu -->"
-
 var artifactLinePrefix = "**Artifact:** "
 
 // scanReasonLog reads every entry in dir and returns the ones that have a PR link
@@ -120,7 +118,7 @@ func scanReasonLog(dir string) ([]reasonLogEntry, error) {
 		if e.prURL == "" {
 			continue // never submitted — not pending work
 		}
-		e.resolved = !strings.Contains(content, outcomePlaceholder) // placeholder gone ⇒ deja-vu recorded an outcome
+		e.resolved = analyst.Outcome(content) != analyst.OutcomeOpen // only an open PR is still pending work
 		out = append(out, e)
 	}
 	return out, nil

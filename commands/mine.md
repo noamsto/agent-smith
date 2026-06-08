@@ -34,11 +34,17 @@ cluster table with a rough cost estimate (each cluster ≈ one Oracle + one
 Editor + review, ~50k tokens), and ask the user which scope to proceed with
 (everything / one repo / top-N) before any propose/apply phase runs.
 
-1. `extractor --out incidents.db` (plus `--corpus` per the scope rule)
-2. `analyst cluster --db incidents.db --out clusters.json --max-incidents-per-cluster 50`
+1. `applier reconcile --reason-log-dir reason-log` — refresh prior PR outcomes
+   (merged/closed) from GitHub before mining, so the next step's deja-vu skip
+   sees the latest rejections. Skip only if `gh` is unauthenticated (warn, continue).
+2. `extractor --out incidents.db` (plus `--corpus` per the scope rule). With
+   `--since` omitted it auto-resumes from the `incidents.db.last-run` marker.
+3. `analyst cluster --db incidents.db --out clusters.json --max-incidents-per-cluster 50`
    (writes the index `clusters.json` + per-cluster files under `clusters/`; then the
    artifact filter per the scope rule). `--min-sessions` defaults to 5; add `--top N`
    to cap the Oracle fleet at the N highest-signal clusters when the user picks a
-   top-N scope above (the command logs the drop count and cutoff).
-3. Print a one-line-per-cluster summary from the index (signal_type, artifact
+   top-N scope above (the command logs the drop count and cutoff). It also drops
+   clusters whose `(artifact, signal)` was already closed/rejected in the reason-log
+   (logged to stderr), so a fresh `clusters.json` never re-proposes declined work.
+4. Print a one-line-per-cluster summary from the index (signal_type, artifact
    basename, distinct_sessions, total_incidents, sampled_incidents) using `jq`.

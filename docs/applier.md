@@ -53,11 +53,22 @@ go run ./cmd/applier open    --plan apply-plan.json --group <group-id>     # →
 go run ./cmd/applier submit  --plan apply-plan.json --proposals proposals.json \
     --group <group-id> --worktree <path> --editor-result-dir <dir-of-editor-result-<id>.json> \
     --reason-log-dir reason-log
+go run ./cmd/applier reconcile --reason-log-dir reason-log  # update PR outcomes
 ```
 
 `open` prints the worktree path (line 1), the file every proposal in the group
 edits (line 2), and the group's proposal ids in apply order (lines 3+). `submit`
 reads `editor-result-<id>.json` for each of those ids from `--editor-result-dir`.
+
+## Reconcile (deja-vu outcome write-back)
+
+`reconcile` closes the loop with the analyst's deja-vu skip. Each reason-log entry
+is born `<!-- outcome: open -->`; `submit` fills its `**PR:**` link. Later,
+`reconcile` queries `gh pr list --state all` for every repo referenced by those PR
+links and rewrites each entry's outcome marker to match: `merged`, or `closed`
+(a PR the user closed without merging). A `closed`/`rejected` entry makes the
+analyst skip that `(artifact, signal_type)` cluster on the next run, so a rejected
+proposal is never regenerated. Run it periodically (or before a fresh `mine`).
 
 ## Dry run
 
@@ -127,4 +138,4 @@ proposal is always surfaced, never silently dropped.
 ## Deferred
 
 factify Linear-ticket/branch naming; nix-config auto-commit (Phase 2); the
-`/agent-smith` orchestration command; deja-vu outcome tracking.
+`/agent-smith` orchestration command.

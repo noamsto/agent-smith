@@ -5,14 +5,17 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/noamsto/agent-smith/internal/analyst"
 )
 
-const prPlaceholder = "<!-- PR link appended by the applier; outcome appended by deja-vu -->"
+const prPlaceholder = analyst.PRPlaceholder
 
 // AppendPRLink fills the applier placeholder in the reason-log entry whose first
-// heading is "# <id>" with the PR URL, leaving a deja-vu outcome marker. It scans
-// by heading (not filename) so it is decoupled from the analyst's slug logic, and
-// is idempotent — a second call with a PR line already present is a no-op.
+// heading is "# <id>" with the PR URL, leaving the deja-vu outcome marker that the
+// assemble step wrote in place. It scans by heading (not filename) so it is
+// decoupled from the analyst's slug logic, and is idempotent — a second call with
+// a PR line already present is a no-op.
 func AppendPRLink(dir, id, prURL string) error {
 	paths, err := filepath.Glob(filepath.Join(dir, "*.md"))
 	if err != nil {
@@ -33,8 +36,7 @@ func AppendPRLink(dir, id, prURL string) error {
 		if !strings.Contains(content, prPlaceholder) {
 			return fmt.Errorf("reason-log entry %q has no applier placeholder to fill", id)
 		}
-		repl := fmt.Sprintf("**PR:** %s\n\n<!-- outcome appended by deja-vu -->", prURL)
-		content = strings.Replace(content, prPlaceholder, repl, 1)
+		content = strings.Replace(content, prPlaceholder, fmt.Sprintf("**PR:** %s", prURL), 1)
 		return os.WriteFile(path, []byte(content), 0o644)
 	}
 	return fmt.Errorf("no reason-log entry with heading %q in %s", id, dir)

@@ -15,6 +15,7 @@ import (
 type Proposal struct {
 	ID                 string   `json:"id"`
 	ImplicatedArtifact string   `json:"implicated_artifact"`
+	SignalType         string   `json:"signal_type"`
 	FixType            string   `json:"fix_type"`
 	Evidence           []string `json:"evidence"`
 	Diagnosis          string   `json:"diagnosis"`
@@ -142,6 +143,9 @@ func WriteReasonLogs(props []Proposal, dir, date string) (int, error) {
 		var b strings.Builder
 		fmt.Fprintf(&b, "# %s\n\n", p.ID)
 		fmt.Fprintf(&b, "**Artifact:** %s  \n", p.ImplicatedArtifact)
+		if p.SignalType != "" {
+			fmt.Fprintf(&b, "**Signal:** %s  \n", p.SignalType)
+		}
 		fmt.Fprintf(&b, "**Fix type:** %s  **Confidence:** %s  **Date:** %s\n\n", p.FixType, p.Confidence, date)
 		fmt.Fprintf(&b, "## Diagnosis\n\n%s\n\n", p.Diagnosis)
 		fmt.Fprintf(&b, "## Evidence\n\n")
@@ -150,7 +154,8 @@ func WriteReasonLogs(props []Proposal, dir, date string) (int, error) {
 		}
 		fmt.Fprintf(&b, "\n## Proposed change\n\n```\n%s\n```\n\n", p.ProposedChange)
 		fmt.Fprintf(&b, "## Expected effect\n\n%s\n\n", p.ReasonLog)
-		fmt.Fprintf(&b, "<!-- PR link appended by the applier; outcome appended by deja-vu -->\n")
+		fmt.Fprintf(&b, "%s\n\n", prPlaceholder)
+		fmt.Fprintf(&b, "%s\n", outcomeMarker(OutcomeOpen))
 
 		// O_EXCL makes append-only atomic: refuse to clobber an existing entry.
 		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)

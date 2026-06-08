@@ -21,11 +21,26 @@ deferred.
 
 ```bash
 nix develop
-go run ./cmd/analyst cluster  --db incidents.db --out clusters.json --min-sessions 5 --top 0
+go run ./cmd/analyst cluster  --db incidents.db --out clusters.json --min-sessions 5 --top 0 --reason-log-dir reason-log
 # (writes the index clusters.json + per-cluster clusters/<id>.json)
 # (dispatch the Oracle per cluster file → write proposal JSONs into ./proposals/)
+
 go run ./cmd/analyst assemble --proposals-dir proposals --out proposals.json --reason-log-dir reason-log
 ```
+
+## Deja-vu memory (skipping rejected proposals)
+
+`cluster` reads the reason-log (`--reason-log-dir`, default `reason-log`) and
+**drops any cluster whose `(artifact, signal_type)` already has an entry marked
+`closed` or `rejected`** — a proposal the user declined on a prior run. Each skip
+is logged to stderr (`skip <cluster_id>: a prior proposal was closed/rejected`),
+never silently dropped. Matching strips an entry's `#section` suffix and resolves
+symlinks, so a since-deleted worktree path still matches its canonical artifact.
+
+The `(artifact, signal_type)` key is recorded in the entry header — the Oracle
+echoes the cluster's `signal_type` into its proposal, and `assemble` writes a
+`**Signal:**` line plus a machine-readable `<!-- outcome: open -->` marker that
+the applier later flips to `merged`/`closed` (see `applier reconcile`).
 
 ## Clustering
 
@@ -80,10 +95,13 @@ representative sample (`sampled_incidents`) against the real totals.
   (machine-local, gitignored). Dedup of **pending work across runs** (an open PR or
   an unresolved reason-log entry for the same artifact+behavior) is the applier's
   job, in `prepare` — see `docs/applier.md`.
-- `reason-log/<date>-<slug>.md` — append-only, committed; the applier later appends
-  the PR link and `deja-vu` the outcome. The applier's dedup gate keys on the
-  `**Artifact:**` line (canonical path + `#section` behavior anchor) and treats an
-  entry as pending until the `deja-vu` outcome placeholder is replaced.
+- `reason-log/<date>-<slug>.md` — append-only, committed. Carries the
+  `(artifact, signal_type)` key and an outcome marker; the applier later fills the PR
+  link (`submit`) and reconciles the outcome merged/closed (`reconcile`). Two readers
+  consume it: the applier's pending-work dedup gate (keys on the `**Artifact:**` line
+  + `#section` anchor, treats an entry as pending until its outcome is recorded) and
+  the analyst's deja-vu skip (keys on `(artifact, signal_type)`, drops clusters whose
+  prior proposal was closed/rejected).
 
 ## Eval
 
