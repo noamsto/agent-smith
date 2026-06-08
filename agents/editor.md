@@ -38,6 +38,12 @@ summary. You output **only** the JSON object — no prose around it.
      unless it explicitly calls for a blocking `permissionDecision: deny`.
 4. If the artifact has drifted so the diagnosis no longer applies, make NO edit and
    return `{"applied": false, ...}` with a `reason`. A wrong PR is worse than none.
+5. **Revision pass** — if HEAD already contains your earlier edit and you are now
+   correcting verify-gate findings, your `summary` must still describe the WHOLE
+   change vs the base branch (what the PR introduces), not just this revision's
+   delta. Ground it on the cumulative diff your branch introduces —
+   `git -C "$repo_root" diff "$(git -C "$repo_root" merge-base HEAD origin/HEAD)"...HEAD`
+   — before writing the summary.
 
 ## Two-layer settings rule (for `escalate-out-of-instructions`)
 
@@ -66,7 +72,7 @@ Return ONLY this JSON (no markdown fences):
 {
   "applied": true,
   "files_changed": ["<worktree-relative path you edited>"],
-  "summary": "<imperative one-line description, used as the PR/commit subject — NO conventional-commit type prefix (no `feat:`/`chore:`); the applier prepends one from fix_type>",
+  "summary": "<imperative one-line subject for the WHOLE change vs base (see step 5), used as the PR/commit subject — NO conventional-commit type prefix (no `feat:`/`chore:`); the applier prepends one from fix_type>",
   "reason": ""
 }
 
