@@ -58,6 +58,68 @@ worktree. If the target settings file is in a DIFFERENT repo than `repo_root`, d
 not edit it — return `{"applied": false, "reason": "settings file outside this
 repo's worktree"}`.
 
+### Canonical PreToolUse hook template
+
+When an `escalate-out-of-instructions` fix is a **hook**, write a PreToolUse hook
+that follows this template verbatim. It encodes the current Claude Code contract;
+do not invent other shapes. Past runs drifted (deprecated top-level
+`{"decision":"block"}`, ad-hoc cwd extraction, missing fail-open) — this is the
+single shape to use.
+
+Contract this template encodes:
+
+- **Output** uses `hookSpecificOutput` with `hookEventName: "PreToolUse"`. Block
+  with `permissionDecision: "deny"` (or `"ask"`) plus `permissionDecisionReason`.
+  Nudge without blocking via `additionalContext` (advisory mode). NEVER the
+  deprecated top-level `{"decision":"block"}` shape — that is the wrong pattern
+  for PreToolUse.
+- **Input** comes from the hook's stdin JSON — read `cwd` and `tool_input` (e.g.
+  `.tool_input.command`) with `jq`, never from the environment.
+- **Fail-open**: every extraction is guarded with `|| exit 0`, and unmatched
+  input exits 0. A hook bug must never block the user.
+- The script must pass `shellcheck` clean.
+
+```bash
+#!/usr/bin/env bash
+# PreToolUse hook — fail-open. Reads the hook payload on stdin and decides per
+# the current contract: hookSpecificOutput.permissionDecision +
+# permissionDecisionReason (advisory uses additionalContext). Any internal
+# error must exit 0 so the hook never blocks the user on its own bug.
+set -euo pipefail
+
+input=$(cat)
+
+# Extract from the hook's stdin JSON. A jq failure falls through to fail-open.
+cwd=$(printf '%s' "$input" | jq -r '.cwd // empty') || exit 0
+command=$(printf '%s' "$input" | jq -r '.tool_input.command // empty') || exit 0
+
+[ -n "$command" ] || exit 0  # nothing to judge → normal permission flow
+
+# --- decide ---------------------------------------------------------------
+# Replace this guard with the proposal's actual condition.
+case "$command" in
+*PATTERN_TO_CATCH*)
+  # Advisory mode (pairs with #19): nudge Claude, do not block.
+  jq -n --arg cwd "$cwd" '{hookSpecificOutput: {
+    hookEventName: "PreToolUse",
+    additionalContext: ("In " + $cwd + ": prefer X over Y here.")
+  }}'
+  # Deny mode: block the call and explain why (cwd available for the reason).
+  # jq -n --arg cwd "$cwd" '{hookSpecificOutput: {
+  #   hookEventName: "PreToolUse",
+  #   permissionDecision: "deny",
+  #   permissionDecisionReason: ("Blocked in " + $cwd + ": <why>.")
+  # }}'
+  ;;
+esac
+
+exit 0  # default: stay out of the way
+```
+
+Adapt the `case` guard and the chosen mode (advisory vs deny) to the proposal;
+keep the stdin extraction, fail-open, and output shape unchanged. Run
+`shellcheck` on the final script.
+
 ## Hard rules
 
 - **For `strengthen`/`fix-stale`/`remove`, find and edit the existing rule IN PLACE.** You MUST NOT add a new heading, section, or paragraph that restates guidance already present in the file — duplicating an existing rule is the failure mode this system exists to prevent. If you cannot tighten it in place without duplicating, return `applied: false` with a reason.
