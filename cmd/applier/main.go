@@ -44,9 +44,11 @@ func runPrepare(args []string) {
 	fs := flag.NewFlagSet("prepare", flag.ExitOnError)
 	proposals := fs.String("proposals", "proposals.json", "assembled proposals file")
 	out := fs.String("out", "apply-plan.json", "output apply-plan file")
+	settingsRepo := fs.String("settings-repo", os.Getenv("AGENT_SMITH_SETTINGS_REPO"),
+		"repo root owning the Claude Code settings layers; escalations route here (default $AGENT_SMITH_SETTINGS_REPO)")
 	_ = fs.Parse(args)
 
-	plan, err := applier.Prepare(*proposals)
+	plan, err := applier.Prepare(*proposals, *settingsRepo)
 	if err != nil {
 		fatal(err)
 	}
@@ -57,6 +59,8 @@ func runPrepare(args []string) {
 	for _, e := range plan {
 		if e.Status == applier.StatusReady {
 			ready++
+		} else if e.Reason != "" {
+			fmt.Fprintf(os.Stderr, "skip %s: %s (%s)\n", e.ProposalID, e.Status, e.Reason)
 		} else {
 			fmt.Fprintf(os.Stderr, "skip %s: %s\n", e.ProposalID, e.Status)
 		}

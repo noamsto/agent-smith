@@ -1,5 +1,5 @@
 {
   "name": "agent-smith",
   "description": "Mines Claude Code session history for recurring agent glitches and proposes instruction-artifact fixes via PR.",
-  "version": "0.3.0"
+  "version": "0.4.0"
 }

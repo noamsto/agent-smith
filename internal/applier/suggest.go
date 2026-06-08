@@ -51,7 +51,12 @@ func Suggest(plan []PlanEntry, props []analyst.Proposal) string {
 	if skipped > 0 {
 		fmt.Fprintf(&b, "\n## Skipped\n\n")
 		for _, e := range plan {
-			if e.Status != StatusReady {
+			if e.Status == StatusReady {
+				continue
+			}
+			if e.Reason != "" {
+				fmt.Fprintf(&b, "- `%s` — %s (%s)\n", e.ProposalID, e.Status, e.Reason)
+			} else {
 				fmt.Fprintf(&b, "- `%s` — %s\n", e.ProposalID, e.Status)
 			}
 		}
