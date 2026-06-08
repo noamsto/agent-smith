@@ -83,7 +83,7 @@ func TestClusterDBBundlesArtifactContent(t *testing.T) {
 	   '["` + artifact + `","` + missing + `"]'::JSON,'[]'::JSON,'high','{}'::JSON);`
 	db := makeIncidentsDB(t, ins)
 
-	clusters, err := ClusterDB(context.Background(), db, 3, 0)
+	clusters, dropped, err := ClusterDB(context.Background(), db, 3, 0)
 	if err != nil {
 		t.Fatalf("ClusterDB: %v", err)
 	}
@@ -104,11 +104,65 @@ func TestClusterDBBundlesArtifactContent(t *testing.T) {
 		t.Errorf("expected bundled artifact content with the rule, got exists=%v content=%v",
 			got.ArtifactExists, got.ArtifactContent)
 	}
-	// The missing-file candidate also forms a >=3 cluster but with no content.
+	// The missing-file candidate also forms a >=3 cluster, but its canonical
+	// artifact is gone, so it is dropped rather than emitted with empty content.
+	if dropped != 1 {
+		t.Errorf("dropped = %d, want 1 (the missing-artifact cluster)", dropped)
+	}
 	for i := range clusters {
-		if clusters[i].Artifact == missing && (clusters[i].ArtifactExists || clusters[i].ArtifactContent != nil) {
-			t.Errorf("missing artifact should have exists=false, content=nil")
+		if clusters[i].Artifact == missing {
+			t.Errorf("missing artifact should be dropped, not emitted: %+v", clusters[i])
 		}
+	}
+}
+
+func TestClusterCanonicalizesWorktreePaths(t *testing.T) {
+	// A repo with a real root CLAUDE.md and a separate repo whose root file is
+	// gone. Incidents reference the artifacts only through .worktrees/<name>/
+	// copies (worktrunk's layout). Canonicalization must (1) merge the three
+	// worktree-copy incidents onto the single existing root file, and (2) drop the
+	// cluster whose canonical root file no longer exists.
+	repo := t.TempDir()
+	root := filepath.Join(repo, "CLAUDE.md")
+	if err := os.WriteFile(root, []byte("# rule\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	wtA := filepath.Join(repo, ".worktrees", "feat-a", "CLAUDE.md")
+	wtB := filepath.Join(repo, ".worktrees", "fix-b", "CLAUDE.md")
+	gone := filepath.Join(t.TempDir(), "CLAUDE.md") // canonical file never created
+	goneWt := filepath.Join(filepath.Dir(gone), ".worktrees", "feat-c", "CLAUDE.md")
+
+	ins := `INSERT INTO incidents VALUES
+	 (md5('i1'),'s1','/p','2026-05-01T10:00:00Z','inefficiency','` + wtA + `',
+	   '["` + wtA + `"]'::JSON,'[]'::JSON,'high','{}'::JSON),
+	 (md5('i2'),'s2','/p','2026-05-01T11:00:00Z','inefficiency','` + wtB + `',
+	   '["` + wtB + `"]'::JSON,'[]'::JSON,'high','{}'::JSON),
+	 (md5('i3'),'s3','/p','2026-05-01T12:00:00Z','inefficiency','` + root + `',
+	   '["` + root + `"]'::JSON,'[]'::JSON,'high','{}'::JSON),
+	 (md5('g1'),'s1','/p','2026-05-01T10:00:00Z','tool_error','` + goneWt + `',
+	   '["` + goneWt + `"]'::JSON,'[]'::JSON,'high','{}'::JSON),
+	 (md5('g2'),'s2','/p','2026-05-01T11:00:00Z','tool_error','` + goneWt + `',
+	   '["` + goneWt + `"]'::JSON,'[]'::JSON,'high','{}'::JSON),
+	 (md5('g3'),'s3','/p','2026-05-01T12:00:00Z','tool_error','` + goneWt + `',
+	   '["` + goneWt + `"]'::JSON,'[]'::JSON,'high','{}'::JSON);`
+	db := makeIncidentsDB(t, ins)
+
+	clusters, dropped, err := ClusterDB(context.Background(), db, 3, 0)
+	if err != nil {
+		t.Fatalf("ClusterDB: %v", err)
+	}
+	if len(clusters) != 1 {
+		t.Fatalf("expected 1 cluster (worktree copies merged onto the root), got %d: %+v", len(clusters), clusters)
+	}
+	c := clusters[0]
+	if c.Artifact != root {
+		t.Errorf("artifact = %q, want canonical root %q", c.Artifact, root)
+	}
+	if c.DistinctSessions != 3 || c.TotalIncidents != 3 {
+		t.Errorf("merge undercounted: sessions=%d incidents=%d, want 3/3", c.DistinctSessions, c.TotalIncidents)
+	}
+	if dropped != 1 {
+		t.Errorf("dropped = %d, want 1 (the missing-canonical worktree cluster)", dropped)
 	}
 }
 

@@ -27,12 +27,17 @@ go run ./cmd/analyst assemble --proposals-dir proposals --out proposals.json --r
 
 ## Clustering
 
-Incidents are **exploded across their `candidates`** and grouped by
+Incidents are **exploded across their `candidates`**, each candidate is
+**canonicalized** (a path under a git worktree — `<repo>/.worktrees/<name>/…`,
+worktrunk's layout — maps back to the repo-root artifact), then grouped by
 `(artifact, signal_type)`; a group is actionable at `>= --min-sessions` (default 3)
-distinct sessions. A shared artifact (e.g. the global `CLAUDE.md`) accumulates
-incidents across projects, so cross-project glitches against a shared rule converge
-on the right artifact. Each cluster bundles the artifact's current file content so
-the Oracle can choose `strengthen` over a duplicate `add`.
+distinct sessions. Canonicalization keeps worktree copies of a file from
+fragmenting into duplicate clusters. A shared artifact (e.g. the global `CLAUDE.md`)
+accumulates incidents across projects, so cross-project glitches against a shared
+rule converge on the right artifact. Each cluster bundles the artifact's current
+file content so the Oracle can choose `strengthen` over a duplicate `add`; clusters
+whose canonical artifact no longer exists on disk (deleted worktree, removed file)
+are dropped, and the count is logged.
 
 ## Outputs
 
