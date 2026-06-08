@@ -27,7 +27,9 @@ The unit of work is a **group**: ready proposals sharing a `group_id` (same repo
 artifact) land in one worktree, one branch, one PR. A lone proposal is a group of
 one. This avoids the guaranteed conflict of N PRs all editing the same file.
 
-1. `applier prepare --proposals proposals.json --out apply-plan.json`
+1. `applier prepare --proposals proposals.json --out apply-plan.json --settings-repo "$AGENT_SMITH_SETTINGS_REPO"`
+   — `--settings-repo` routes `escalate-out-of-instructions` proposals to the repo
+   owning the Claude Code settings layers; without it they are `skip-unrouted`.
 2. Determine the target **groups**: if an id was given, the `group_id` of that
    entry in `apply-plan.json` (read with `jq`); else every distinct `group_id`
    among entries with `status == "ready"`.

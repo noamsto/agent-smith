@@ -3,6 +3,7 @@ package applier
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -28,7 +29,7 @@ func TestPrepareStatuses(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	plan, err := Prepare(pf)
+	plan, err := Prepare(pf, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +72,7 @@ func TestPrepareGroupsByArtifact(t *testing.T) {
 	if err := os.WriteFile(pf, []byte(proposals), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	plan, err := Prepare(pf)
+	plan, err := Prepare(pf, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,6 +105,107 @@ func TestPrepareGroupsByArtifact(t *testing.T) {
 	}
 	if len(ReadyGroupIDs(plan)) != 2 {
 		t.Errorf("ReadyGroupIDs = %v, want 2 groups", ReadyGroupIDs(plan))
+	}
+}
+
+func TestPrepareEscalationRoutesToSettingsRepo(t *testing.T) {
+	implicated := initRepo(t, "https://github.com/noamsto/some-app.git")
+	settings := initRepo(t, "https://github.com/noamsto/nix-config.git")
+
+	proposals := `[
+	  {"id":"p-escalate","implicated_artifact":"` + filepath.Join(implicated, "CLAUDE.md") + `","fix_type":"escalate-out-of-instructions",
+	   "evidence":["s1:1"],"diagnosis":"d","proposed_change":"add a hook","confidence":"high","reason_log":"r"}
+	]`
+	pf := filepath.Join(t.TempDir(), "proposals.json")
+	if err := os.WriteFile(pf, []byte(proposals), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	plan, err := Prepare(pf, settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e, err := FindEntry(plan, "p-escalate")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e.Status != StatusReady {
+		t.Fatalf("status = %q, want %q", e.Status, StatusReady)
+	}
+	wantRoot, err := filepath.EvalSymlinks(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e.RepoRoot != wantRoot {
+		t.Errorf("RepoRoot = %q, want settings repo %q", e.RepoRoot, wantRoot)
+	}
+	if e.Owner != "nix-config" {
+		t.Errorf("Owner = %q, want nix-config", e.Owner)
+	}
+	if !strings.HasPrefix(e.BranchName, "chore/agent-smith-") {
+		t.Errorf("BranchName = %q, want chore/agent-smith-<artifact-slug>", e.BranchName)
+	}
+	if e.BranchName == "chore/agent-smith-p-escalate" {
+		t.Errorf("branch is id-derived, want artifact-derived: %q", e.BranchName)
+	}
+	if e.FilePath != filepath.Join(wantRoot, settingsFileRel) {
+		t.Errorf("FilePath = %q, want %q", e.FilePath, filepath.Join(wantRoot, settingsFileRel))
+	}
+}
+
+func TestPrepareEscalationNoSettingsRepoUnrouted(t *testing.T) {
+	implicated := initRepo(t, "https://github.com/noamsto/some-app.git")
+	proposals := `[
+	  {"id":"p-escalate","implicated_artifact":"` + filepath.Join(implicated, "CLAUDE.md") + `","fix_type":"escalate-out-of-instructions",
+	   "evidence":["s1:1"],"diagnosis":"d","proposed_change":"add a hook","confidence":"high","reason_log":"r"}
+	]`
+	pf := filepath.Join(t.TempDir(), "proposals.json")
+	if err := os.WriteFile(pf, []byte(proposals), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	plan, err := Prepare(pf, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	e, err := FindEntry(plan, "p-escalate")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e.Status != StatusUnrouted {
+		t.Errorf("status = %q, want %q", e.Status, StatusUnrouted)
+	}
+	if e.Reason == "" {
+		t.Error("expected a routing reason on an unrouted escalation")
+	}
+	if e.RepoRoot != "" {
+		t.Errorf("RepoRoot = %q, want empty (not dispatched at the implicated repo)", e.RepoRoot)
+	}
+}
+
+func TestPrepareEscalationSettingsRepoUnresolvableUnrouted(t *testing.T) {
+	proposals := `[
+	  {"id":"p-escalate","implicated_artifact":"/somewhere/CLAUDE.md","fix_type":"escalate-out-of-instructions",
+	   "evidence":["s1:1"],"diagnosis":"d","proposed_change":"add a hook","confidence":"high","reason_log":"r"}
+	]`
+	pf := filepath.Join(t.TempDir(), "proposals.json")
+	if err := os.WriteFile(pf, []byte(proposals), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	plan, err := Prepare(pf, t.TempDir()) // a dir that is not a git repo
+	if err != nil {
+		t.Fatal(err)
+	}
+	e, err := FindEntry(plan, "p-escalate")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e.Status != StatusUnrouted {
+		t.Errorf("status = %q, want %q", e.Status, StatusUnrouted)
+	}
+	if e.Reason == "" {
+		t.Error("expected a reason when the settings repo is not a git repo")
 	}
 }
 

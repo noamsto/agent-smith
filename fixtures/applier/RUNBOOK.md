@@ -17,9 +17,13 @@ Code subagent dispatches the orchestrator drives.
 
 1. **Prepare the plan:**
    ```bash
-   applier prepare --proposals proposals.json --out apply-plan.json
+   applier prepare --proposals proposals.json --out apply-plan.json \
+     --settings-repo "$AGENT_SMITH_SETTINGS_REPO"
    ```
-   Review skips printed to stderr (`skip-unresolved`, `skip-missing-file`).
+   `--settings-repo` (defaults to `$AGENT_SMITH_SETTINGS_REPO`) is the repo owning
+   the Claude Code settings layers; `escalate-out-of-instructions` proposals route
+   their worktree there. Review skips printed to stderr (`skip-unresolved`,
+   `skip-missing-file`, `skip-unrouted` — escalation with no settings repo).
 
    **Dry run (review-only):** to preview every proposal without touching any repo,
    run `applier suggest --plan apply-plan.json --proposals proposals.json --out suggestions.md`

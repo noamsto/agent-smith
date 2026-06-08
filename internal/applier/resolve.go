@@ -23,6 +23,13 @@ type Target struct {
 	Base       string `json:"base"`
 }
 
+// settingsFileRel is the hook-layer settings file inside the settings-owning
+// repo. It is the `--settings` overlay that references /nix/store paths, so it
+// cannot live in the implicated repo's worktree (see agents/editor.md's
+// two-layer rule). The editor still picks the actual layer to edit within the
+// repo; this is the file hint handed to it.
+const settingsFileRel = "home/ai/claude-code/default.nix"
+
 // splitArtifact splits an "implicated_artifact" into its file path and optional
 // "#section" anchor (the anchor is informational — passed to the editor, not used
 // to slice the file). Only the first '#' separates them.
@@ -189,6 +196,28 @@ func Resolve(p analyst.Proposal) (Target, error) {
 		RepoRoot:   mainRoot,
 		FilePath:   file,
 		Section:    section,
+		Owner:      classifyOwner(mainRoot),
+		BranchName: fmt.Sprintf("%s/agent-smith-%s", commitType(p.FixType), slug(p.ID)),
+		Base:       defaultBranch(mainRoot),
+	}, nil
+}
+
+// ResolveEscalation routes an `escalate-out-of-instructions` proposal to the
+// settings-owning repo instead of the implicated repo: the proposed hook/
+// permission/default lands in the settings layer, which lives in settingsRepo,
+// not in the repo whose CLAUDE.md surfaced the glitch. settingsRepo is the repo
+// root that owns home/ai/claude-code/ and settings.json. It must be a git repo;
+// callers that lack a configured settings repo skip the proposal rather than
+// calling this.
+func ResolveEscalation(p analyst.Proposal, settingsRepo string) (Target, error) {
+	root, err := repoRoot(settingsRepo)
+	if err != nil {
+		return Target{}, fmt.Errorf("settings repo %s: %w", settingsRepo, err)
+	}
+	mainRoot := mainRepoRoot(root)
+	return Target{
+		RepoRoot:   mainRoot,
+		FilePath:   filepath.Join(mainRoot, settingsFileRel),
 		Owner:      classifyOwner(mainRoot),
 		BranchName: fmt.Sprintf("%s/agent-smith-%s", commitType(p.FixType), slug(p.ID)),
 		Base:       defaultBranch(mainRoot),

@@ -17,13 +17,15 @@ const (
 	StatusUnresolved  = "skip-unresolved"
 	StatusMissingFile = "skip-missing-file"
 	StatusDeclined    = "skip-declined"
+	StatusUnrouted    = "skip-unrouted"
 )
 
 // PlanEntry is one resolved proposal in apply-plan.json. Status gates whether the
-// runbook acts on it. GroupID buckets ready entries that target the same artifact
-// in the same repo so they share one worktree/branch/PR (issue #9): a per-proposal
-// PR against a shared one-line file is a guaranteed conflict. Every entry in a
-// group carries the same GroupID and BranchName.
+// runbook acts on it; Reason annotates a non-ready entry so the orchestrator can
+// surface why it was skipped. GroupID buckets ready entries that target the same
+// artifact in the same repo so they share one worktree/branch/PR (issue #9): a
+// per-proposal PR against a shared one-line file is a guaranteed conflict. Every
+// entry in a group carries the same GroupID and BranchName.
 type PlanEntry struct {
 	ProposalID string `json:"proposal_id"`
 	GroupID    string `json:"group_id"`
@@ -34,6 +36,7 @@ type PlanEntry struct {
 	BranchName string `json:"branch_name"`
 	Base       string `json:"base"`
 	Status     string `json:"status"`
+	Reason     string `json:"reason,omitempty"`
 }
 
 // Target reconstructs the Target an entry was resolved from.
@@ -46,10 +49,15 @@ func (e PlanEntry) Target() Target {
 
 // Prepare reads proposals.json (an array of analyst.Proposal), resolves each, and
 // assigns a Status. Unresolvable or missing-file proposals are recorded as skips
-// rather than failing the batch. Ready entries that target the same artifact in the
-// same repo share a GroupID and a group branch, so the apply loop lands them in one
-// worktree/PR. The plan is sorted by ProposalID.
-func Prepare(proposalsPath string) ([]PlanEntry, error) {
+// rather than failing the batch. settingsRepo is the repo root owning the Claude
+// Code settings layers; `escalate-out-of-instructions` proposals route there
+// instead of the implicated repo (the hook/default cannot land in the implicated
+// worktree). When settingsRepo is empty or unresolvable, those proposals are
+// marked skip-unrouted with a reason rather than dispatching a doomed editor. Ready
+// entries that target the same artifact in the same repo share a GroupID and a group
+// branch, so the apply loop lands them in one worktree/PR. The plan is sorted by
+// ProposalID.
+func Prepare(proposalsPath, settingsRepo string) ([]PlanEntry, error) {
 	data, err := os.ReadFile(proposalsPath)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", proposalsPath, err)
@@ -68,34 +76,18 @@ func Prepare(proposalsPath string) ([]PlanEntry, error) {
 	}
 	groups := map[string]*group{}
 	for _, p := range props {
-		e := PlanEntry{ProposalID: p.ID}
-		if p.FixType == "skip" { // fix_type=skip: declined, no edit — target fields stay zero
-			e.Status = StatusDeclined
-			plan = append(plan, e)
-			continue
+		e := prepareOne(p, settingsRepo)
+		// Group ready entries by (repo, artifact) so they share a worktree/branch/PR.
+		if e.Status == StatusReady {
+			key := e.RepoRoot + "\x00" + e.FilePath
+			g, ok := groups[key]
+			if !ok {
+				g = &group{id: artifactSlug(e.RepoRoot, e.FilePath)}
+				groups[key] = g
+			}
+			g.escalate = g.escalate || commitType(p.FixType) == "chore"
+			e.GroupID = g.id
 		}
-		tg, err := Resolve(p)
-		if err != nil {
-			e.Status = StatusUnresolved
-			plan = append(plan, e)
-			continue
-		}
-		e.RepoRoot, e.FilePath, e.Section = tg.RepoRoot, tg.FilePath, tg.Section
-		e.Owner, e.Base = tg.Owner, tg.Base
-		if _, statErr := os.Stat(tg.FilePath); statErr != nil && p.FixType != "add" {
-			e.Status = StatusMissingFile
-			plan = append(plan, e)
-			continue
-		}
-		e.Status = StatusReady
-		key := e.RepoRoot + "\x00" + e.FilePath
-		g, ok := groups[key]
-		if !ok {
-			g = &group{id: artifactSlug(e.RepoRoot, e.FilePath)}
-			groups[key] = g
-		}
-		g.escalate = g.escalate || commitType(p.FixType) == "chore"
-		e.GroupID = g.id
 		plan = append(plan, e)
 	}
 	for i := range plan {
@@ -111,6 +103,44 @@ func Prepare(proposalsPath string) ([]PlanEntry, error) {
 	}
 	sort.Slice(plan, func(i, j int) bool { return plan[i].ProposalID < plan[j].ProposalID })
 	return plan, nil
+}
+
+func prepareOne(p analyst.Proposal, settingsRepo string) PlanEntry {
+	e := PlanEntry{ProposalID: p.ID}
+	if p.FixType == "skip" { // fix_type=skip: declined, no edit — target fields stay zero
+		e.Status = StatusDeclined
+		return e
+	}
+	if p.FixType == "escalate-out-of-instructions" {
+		if settingsRepo == "" {
+			e.Status = StatusUnrouted
+			e.Reason = "escalation needs a settings repo (--settings-repo / AGENT_SMITH_SETTINGS_REPO); none configured"
+			return e
+		}
+		tg, err := ResolveEscalation(p, settingsRepo)
+		if err != nil {
+			e.Status = StatusUnrouted
+			e.Reason = fmt.Sprintf("settings repo unresolvable: %v", err)
+			return e
+		}
+		e.RepoRoot, e.FilePath, e.Section = tg.RepoRoot, tg.FilePath, tg.Section
+		e.Owner, e.Base = tg.Owner, tg.Base
+		e.Status = StatusReady
+		return e
+	}
+	tg, err := Resolve(p)
+	if err != nil {
+		e.Status = StatusUnresolved
+		return e
+	}
+	e.RepoRoot, e.FilePath, e.Section = tg.RepoRoot, tg.FilePath, tg.Section
+	e.Owner, e.Base = tg.Owner, tg.Base
+	if _, statErr := os.Stat(tg.FilePath); statErr != nil && p.FixType != "add" {
+		e.Status = StatusMissingFile
+		return e
+	}
+	e.Status = StatusReady
+	return e
 }
 
 // artifactSlug is the stable group identity for a (repo, artifact) pair: the repo

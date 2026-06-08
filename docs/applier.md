@@ -44,7 +44,8 @@ the base), and refuses to reset a branch that carries its own commits.
 
 ```bash
 nix develop
-go run ./cmd/applier prepare --proposals proposals.json --out apply-plan.json
+go run ./cmd/applier prepare --proposals proposals.json --out apply-plan.json \
+    --settings-repo "$AGENT_SMITH_SETTINGS_REPO"   # repo owning the settings layers; escalations route here
 go run ./cmd/applier suggest --plan apply-plan.json --proposals proposals.json --out suggestions.md  # dry run: review-only, no edits/PRs
 go run ./cmd/applier open    --plan apply-plan.json --group <group-id>     # → worktree + file + proposal ids
 #   (dispatch the editor subagent once per id into the worktree → editor-result-<id>.json; run the verify gate)
@@ -77,6 +78,16 @@ prose fixes, `chore` when any member is an escalate). Status:
 `ready`, `skip-unresolved` (no git repo), or `skip-missing-file`
 (`strengthen`/`fix-stale`/`remove` on an absent file — `add` is allowed to create).
 Skipped entries belong to no group.
+
+`escalate-out-of-instructions` proposals are special: the proposed hook/permission/
+default belongs in a Claude Code settings layer (the `--settings` overlay at
+`home/ai/claude-code/default.nix`, or `settings.json`), which lives in the
+**settings-owning repo** (nix-config), NOT in the repo whose CLAUDE.md surfaced the
+glitch. `prepare` routes their `repo_root` to `--settings-repo`
+(`$AGENT_SMITH_SETTINGS_REPO`) so the editor lands the change in a worktree of that
+repo. When no settings repo is configured (or it is not a git repo), the proposal is
+marked `skip-unrouted` with a routing `reason` — surfaced on stderr and in
+`suggestions.md` — instead of dispatching an editor that would predictably decline.
 
 ## Eval
 
