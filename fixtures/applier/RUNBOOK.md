@@ -25,33 +25,38 @@ Code subagent dispatches the orchestrator drives.
    run `applier suggest --plan apply-plan.json --proposals proposals.json --out suggestions.md`
    and read `suggestions.md`. No worktrees, edits, or PRs are created.
 
-2. **For each `ready` entry (by `proposal_id`):**
+2. **For each `ready` group (by `group_id` — ready entries sharing a repo +
+   artifact land in one worktree/branch/PR):**
 
-   a. **Open a worktree:**
+   a. **Open a worktree for the group:**
       ```bash
-      applier open --plan apply-plan.json --id <proposal-id>
+      applier open --plan apply-plan.json --group <group-id>
       ```
-      Line 1 = worktree path (`$WT`); line 2 = the file to edit (`$FILE`).
+      Line 1 = worktree path (`$WT`); line 2 = the file every proposal edits
+      (`$FILE`); lines 3+ = the group's proposal ids in apply order.
 
-   b. **Dispatch the editor subagent** (Agent tool). Inline the prompt from
-      `agents/editor.md`, plus the proposal JSON (from `proposals.json`),
-      `file=$FILE`, and `repo_root=$WT`. Capture its JSON output to
-      `editor-result.json`.
+   b. **Dispatch the editor subagent once per proposal id, sequentially** (Agent
+      tool) — each edit must see the prior one, so do NOT parallelize. Inline the
+      prompt from `agents/editor.md`, plus that proposal's JSON (from
+      `proposals.json`), `file=$FILE`, and `repo_root=$WT`. Capture each result to
+      `editor-result-<id>.json` in a shared dir.
 
-   c. **Verify gate** — dispatch on the worktree diff (`git -C $WT diff`):
+   c. **Verify gate** — dispatch on the combined worktree diff (`git -C $WT diff`):
       - Always: the `deslop` skill/agent on the diff (prose artifacts attract slop).
       - If the diff touches a hook / `settings.json` / the Nix overlay: also
         `find-bugs` and `code-review`.
-      - If findings are substantive: re-dispatch the editor (one revision pass) with
-        the findings appended, or append them to the PR body in the next step.
+      - If findings are substantive: re-dispatch the editor for the implicated
+        proposal (one revision pass) with the findings appended, or append them to
+        the PR body in the next step.
 
-   d. **Submit** (commit · push · PR · reason-log link, then drop the worktree):
+   d. **Submit** (one commit · push · one PR enumerating every proposal · reason-log
+      link per proposal, then drop the worktree):
       ```bash
       applier submit --plan apply-plan.json --proposals proposals.json \
-        --id <proposal-id> --worktree "$WT" --editor-result editor-result.json \
+        --group <group-id> --worktree "$WT" --editor-result-dir <dir> \
         --reason-log-dir reason-log
       ```
-      Prints the PR URL, or a skip reason if the editor declined / made no change.
+      Prints the PR URL, or a skip reason if every editor declined / made no change.
 
 3. **Commit the reason-log update** in THIS repo (the applier filled the `**PR:**`
    line):
@@ -64,7 +69,7 @@ Code subagent dispatches the orchestrator drives.
 Phase-1 retries are not yet fully idempotent (deferred — see the spec §8):
 
 - **`submit` failed after the commit but before/at the PR** — the branch and commit
-  exist locally. Re-running `open --id <same>` will fail (`git worktree add -b`
+  exist locally. Re-running `open --group <same>` will fail (`git worktree add -b`
   refuses an existing branch). Either resume `submit` against the worktree from the
   first `open`, or discard and restart: `git -C <repo> worktree remove --force <wt>`
   then `git -C <repo> branch -D <branch>`.
@@ -91,7 +96,7 @@ Prove the loop end-to-end against a throwaway repo, so no real PR is opened:
    - **PASS:** the existing rule is strengthened IN PLACE (raised/made imperative);
      no duplicate "Reading Code" section is added. `deslop` reports clean.
    - **FAIL:** a second skeleton-first section appears, or the edit is slop.
-4. Skip the real push/PR (no such remote); confirm `commitMessage` shape via
+4. Skip the real push/PR (no such remote); confirm the commit-message shape via
    `git -C $WT log -1` after a manual `git -C $WT commit -am test`.
 
 This mirrors the analyst Oracle's "strengthen, don't duplicate" acceptance bar,

@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/noamsto/agent-smith/internal/analyst"
 	"github.com/noamsto/agent-smith/internal/applier"
@@ -66,11 +67,11 @@ func runPrepare(args []string) {
 func runOpen(args []string) {
 	fs := flag.NewFlagSet("open", flag.ExitOnError)
 	planPath := fs.String("plan", "apply-plan.json", "apply-plan file")
-	id := fs.String("id", "", "proposal id to open a worktree for")
+	group := fs.String("group", "", "group id to open a worktree for")
 	_ = fs.Parse(args)
 
-	if *id == "" {
-		fmt.Fprintln(os.Stderr, "applier open: --id is required")
+	if *group == "" {
+		fmt.Fprintln(os.Stderr, "applier open: --group is required")
 		os.Exit(2)
 	}
 
@@ -78,40 +79,45 @@ func runOpen(args []string) {
 	if err != nil {
 		fatal(err)
 	}
-	e, err := applier.FindEntry(plan, *id)
+	entries, err := applier.FindGroup(plan, *group)
 	if err != nil {
 		fatal(err)
 	}
-	if e.Status != applier.StatusReady {
-		fatal(fmt.Errorf("%s is %s, not ready", *id, e.Status))
-	}
-	tg := e.Target()
+	tg := entries[0].Target()
 	wt, err := applier.Open(tg)
 	if err != nil {
 		fatal(err)
 	}
-	// Line 1: worktree path. Line 2: the file the editor must edit.
+	// Line 1: worktree path. Line 2: the file every proposal in the group edits.
+	// Lines 3+: the group's proposal ids, in apply order (edit them sequentially).
 	fmt.Println(wt)
 	fmt.Println(applier.WorktreeFile(tg, wt))
+	for _, e := range entries {
+		fmt.Println(e.ProposalID)
+	}
 }
 
 func runSubmit(args []string) {
 	fs := flag.NewFlagSet("submit", flag.ExitOnError)
 	planPath := fs.String("plan", "apply-plan.json", "apply-plan file")
 	proposalsPath := fs.String("proposals", "proposals.json", "assembled proposals file")
-	id := fs.String("id", "", "proposal id to submit")
+	group := fs.String("group", "", "group id to submit")
 	wt := fs.String("worktree", "", "worktree path returned by `open`")
 	reasonLog := fs.String("reason-log-dir", "reason-log", "reason-log directory")
-	editorResult := fs.String("editor-result", "", "JSON file with the editor subagent's result")
+	resultDir := fs.String("editor-result-dir", "", "directory holding editor-result-<id>.json per group proposal")
 	draft := fs.Bool("draft", false, "open the PR as a draft")
 	_ = fs.Parse(args)
 
-	if *id == "" {
-		fmt.Fprintln(os.Stderr, "applier submit: --id is required")
+	if *group == "" {
+		fmt.Fprintln(os.Stderr, "applier submit: --group is required")
 		os.Exit(2)
 	}
 	if *wt == "" {
 		fmt.Fprintln(os.Stderr, "applier submit: --worktree is required")
+		os.Exit(2)
+	}
+	if *resultDir == "" {
+		fmt.Fprintln(os.Stderr, "applier submit: --editor-result-dir is required")
 		os.Exit(2)
 	}
 
@@ -119,19 +125,23 @@ func runSubmit(args []string) {
 	if err != nil {
 		fatal(err)
 	}
-	e, err := applier.FindEntry(plan, *id)
+	entries, err := applier.FindGroup(plan, *group)
 	if err != nil {
 		fatal(err)
 	}
-	tg := e.Target()
+	tg := entries[0].Target()
 
-	prop, err := loadProposal(*proposalsPath, *id)
-	if err != nil {
-		fatal(err)
-	}
-	ed, err := loadEditorResult(*editorResult)
-	if err != nil {
-		fatal(err)
+	items := make([]applier.GroupItem, 0, len(entries))
+	for _, e := range entries {
+		prop, err := loadProposal(*proposalsPath, e.ProposalID)
+		if err != nil {
+			fatal(err)
+		}
+		ed, err := loadEditorResult(filepath.Join(*resultDir, "editor-result-"+e.ProposalID+".json"))
+		if err != nil {
+			fatal(err)
+		}
+		items = append(items, applier.GroupItem{Proposal: prop, Editor: ed})
 	}
 
 	defer func() {
@@ -140,16 +150,16 @@ func runSubmit(args []string) {
 		}
 	}()
 
-	url, skipped, err := applier.Submit(applier.Run, tg, *wt, prop, ed, *reasonLog, *draft)
+	url, skipped, err := applier.Submit(applier.Run, tg, *wt, items, *reasonLog, *draft)
 	if err != nil {
 		_ = applier.Drop(tg.RepoRoot, *wt) // defer below is skipped by os.Exit in fatal()
 		fatal(err)
 	}
 	if skipped {
-		fmt.Printf("skipped %s (editor declined or no change): %s\n", *id, ed.Reason)
+		fmt.Printf("skipped group %s (every editor declined or no change)\n", *group)
 		return
 	}
-	fmt.Printf("opened PR for %s: %s\n", *id, url)
+	fmt.Printf("opened PR for group %s: %s\n", *group, url)
 }
 
 func loadAllProposals(path string) ([]analyst.Proposal, error) {

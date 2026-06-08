@@ -54,6 +54,59 @@ func TestPrepareStatuses(t *testing.T) {
 	}
 }
 
+func TestPrepareGroupsByArtifact(t *testing.T) {
+	root := initRepo(t, "https://github.com/noamsto/nix-config.git")
+	claude := filepath.Join(root, "CLAUDE.md")
+	other := filepath.Join(root, "AGENTS.md")
+
+	proposals := `[
+	  {"id":"p-claude-a","implicated_artifact":"` + claude + `#x","fix_type":"strengthen",
+	   "evidence":["s1:1"],"diagnosis":"d","proposed_change":"c","confidence":"high","reason_log":"r"},
+	  {"id":"p-claude-b","implicated_artifact":"` + claude + `#y","fix_type":"add",
+	   "evidence":["s1:1"],"diagnosis":"d","proposed_change":"c","confidence":"high","reason_log":"r"},
+	  {"id":"p-other","implicated_artifact":"` + other + `","fix_type":"add",
+	   "evidence":["s1:1"],"diagnosis":"d","proposed_change":"c","confidence":"high","reason_log":"r"}
+	]`
+	pf := filepath.Join(t.TempDir(), "proposals.json")
+	if err := os.WriteFile(pf, []byte(proposals), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := Prepare(pf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]PlanEntry{}
+	for _, e := range plan {
+		byID[e.ProposalID] = e
+	}
+	// Same artifact → same group + branch; the branch is artifact-derived, not id-derived.
+	a, b := byID["p-claude-a"], byID["p-claude-b"]
+	if a.GroupID == "" || a.GroupID != b.GroupID {
+		t.Errorf("same-artifact proposals not grouped: %q vs %q", a.GroupID, b.GroupID)
+	}
+	if a.BranchName != b.BranchName {
+		t.Errorf("grouped proposals on different branches: %q vs %q", a.BranchName, b.BranchName)
+	}
+	if a.BranchName == "docs/agent-smith-p-claude-a" {
+		t.Errorf("branch is still id-derived: %q", a.BranchName)
+	}
+	// Different artifact → distinct group.
+	if byID["p-other"].GroupID == a.GroupID {
+		t.Errorf("different-artifact proposal landed in the same group %q", a.GroupID)
+	}
+	// FindGroup returns both members in id order; ReadyGroupIDs lists each group once.
+	group, err := FindGroup(plan, a.GroupID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(group) != 2 || group[0].ProposalID != "p-claude-a" {
+		t.Errorf("FindGroup = %+v", group)
+	}
+	if len(ReadyGroupIDs(plan)) != 2 {
+		t.Errorf("ReadyGroupIDs = %v, want 2 groups", ReadyGroupIDs(plan))
+	}
+}
+
 func TestPlanRoundTrip(t *testing.T) {
 	plan := []PlanEntry{{ProposalID: "p1", RepoRoot: "/r", FilePath: "/r/C.md", Status: StatusReady}}
 	path := filepath.Join(t.TempDir(), "apply-plan.json")
