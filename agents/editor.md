@@ -33,7 +33,9 @@ summary. You output **only** the JSON object — no prose around it.
    - `fix-stale` — correct the renamed file / removed flag / outdated API.
    - `remove` — cut or rewrite the contradictory/harmful guidance.
    - `escalate-out-of-instructions` — implement the proposed hook/permission/default
-     in the correct settings layer (see below), NOT in the prose artifact.
+     in the correct settings layer (see below), NOT in the prose artifact. Honor the
+     ladder rung the proposal names: build an advisory (`additionalContext`) hook
+     unless it explicitly calls for a blocking `permissionDecision: deny`.
 4. If the artifact has drifted so the diagnosis no longer applies, make NO edit and
    return `{"applied": false, ...}` with a `reason`. A wrong PR is worse than none.
 
