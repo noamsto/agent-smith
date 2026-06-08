@@ -161,6 +161,26 @@ as-is, never downloaded over.
 
 </details>
 
+<details>
+<summary>Nix / Home Manager (engine on PATH)</summary>
+
+Add the flake as an input and import the Home Manager module; it puts the
+`extractor`/`analyst`/`applier` binaries on PATH with their deps (duckdb, git,
+gh) already wrapped, so the plugin never has to download them:
+
+```nix
+# flake.nix
+inputs.agent-smith.url = "github:noamsto/agent-smith";
+
+# home.nix (or any Home Manager module)
+imports = [ inputs.agent-smith.homeManagerModules.default ];
+programs.agent-smith.enable = true;
+```
+
+Enable the plugin itself via the `settings.json` keys above.
+
+</details>
+
 ## 🔧 Develop
 
 ```bash
