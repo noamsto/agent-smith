@@ -24,8 +24,9 @@ Precondition: `clusters.json` exists in the cwd — if missing, run the
    - Write that single cluster object to `/tmp/agent-smith-proposals-in/cluster-<i>.json`.
    - Dispatch the **agent-smith:oracle** subagent (Agent tool) with this prompt:
      "Read the cluster at `/tmp/agent-smith-proposals-in/cluster-<i>.json` and follow
-     your instructions to produce ONE proposal. Write ONLY the JSON object to
-     `/tmp/agent-smith-proposals-in/p-<i>.json`." (Delete the cluster temp after.)
+     your instructions to produce ONE proposal. Write the JSON proposal to
+     `/tmp/agent-smith-proposals-in/p-<i>.json` and return only your one-line final
+     message — not the JSON." (Delete the cluster temp after.)
    - If the Oracle errors or writes no file, log a skip and continue.
 3. `analyst assemble --proposals-dir /tmp/agent-smith-proposals-in --out proposals.json --reason-log-dir reason-log`
    (Pass `--date <today>` only if needed; default is today.)

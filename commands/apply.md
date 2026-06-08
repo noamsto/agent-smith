@@ -30,10 +30,11 @@ Precondition: `proposals.json` exists in the cwd — if missing, run the
       (worktree) and line 2 as `$FILE`.
    b. Extract that proposal object from `proposals.json` to a temp file. Dispatch the
       **agent-smith:editor** subagent (Agent tool) with: the proposal temp-file path,
-      `file=$FILE`, `repo_root=$WT`, and the instruction to follow its own contract
-      and write its result JSON to `/tmp/agent-smith-proposals-in/editor-result-<id>.json`
+      `file=$FILE`, `repo_root=$WT`, and the instruction to follow its own contract:
+      write its result JSON to `/tmp/agent-smith-proposals-in/editor-result-<id>.json`
       (this path is the editor's output sink — writing it is not an artifact edit, so it is
-      fine that it lives outside the worktree).
+      fine that it lives outside the worktree) and return only its one-line final message,
+      not the JSON.
    c. **Verify gate** on `git -C "$WT" diff`:
       - Always run the `deslop` skill/review on the diff.
       - If the diff touches a hook, `settings.json`, or a Nix `*.nix` overlay, also
