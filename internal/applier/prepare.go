@@ -18,6 +18,7 @@ const (
 	StatusMissingFile = "skip-missing-file"
 	StatusDeclined    = "skip-declined"
 	StatusUnrouted    = "skip-unrouted"
+	StatusDuplicate   = "skip-duplicate"
 )
 
 // PlanEntry is one resolved proposal in apply-plan.json. Status gates whether the
@@ -37,6 +38,10 @@ type PlanEntry struct {
 	Base       string `json:"base"`
 	Status     string `json:"status"`
 	Reason     string `json:"reason,omitempty"`
+	// Supersedes names the pending PR or reason-log entry this proposal duplicates,
+	// set only on StatusDuplicate entries. Surfaced in output so a skipped duplicate
+	// is visible, never silently dropped.
+	Supersedes string `json:"supersedes,omitempty"`
 }
 
 // Target reconstructs the Target an entry was resolved from.
@@ -47,17 +52,28 @@ func (e PlanEntry) Target() Target {
 	}
 }
 
+// DedupConfig supplies the pending-work dedup gate its two sources: the repo's
+// open PRs and the prior reason-log history. Both are optional — a zero config
+// disables dedup. ListOpenPRs is injected so tests run offline.
+type DedupConfig struct {
+	ListOpenPRs  ListOpenPRs
+	ReasonLogDir string
+}
+
 // Prepare reads proposals.json (an array of analyst.Proposal), resolves each, and
 // assigns a Status. Unresolvable or missing-file proposals are recorded as skips
 // rather than failing the batch. settingsRepo is the repo root owning the Claude
 // Code settings layers; `escalate-out-of-instructions` proposals route there
 // instead of the implicated repo (the hook/default cannot land in the implicated
 // worktree). When settingsRepo is empty or unresolvable, those proposals are
-// marked skip-unrouted with a reason rather than dispatching a doomed editor. Ready
-// entries that target the same artifact in the same repo share a GroupID and a group
-// branch, so the apply loop lands them in one worktree/PR. The plan is sorted by
+// marked skip-unrouted with a reason rather than dispatching a doomed editor. Before
+// a resolved proposal is marked ready, the dedup gate (cfg) checks it against open PRs
+// and prior reason-log history for the same artifact+behavior; a hit is recorded as
+// StatusDuplicate with Supersedes set rather than regenerating duplicate pending work.
+// Ready entries that target the same artifact in the same repo share a GroupID and a
+// group branch, so the apply loop lands them in one worktree/PR. The plan is sorted by
 // ProposalID.
-func Prepare(proposalsPath, settingsRepo string) ([]PlanEntry, error) {
+func Prepare(proposalsPath, settingsRepo string, cfg DedupConfig) ([]PlanEntry, error) {
 	data, err := os.ReadFile(proposalsPath)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", proposalsPath, err)
@@ -66,6 +82,20 @@ func Prepare(proposalsPath, settingsRepo string) ([]PlanEntry, error) {
 	if err := json.Unmarshal(data, &props); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", proposalsPath, err)
 	}
+
+	var openPRs []PullRequest
+	if cfg.ListOpenPRs != nil {
+		if openPRs, err = cfg.ListOpenPRs(); err != nil {
+			return nil, err
+		}
+	}
+	var prior []reasonLogEntry
+	if cfg.ReasonLogDir != "" {
+		if prior, err = scanReasonLog(cfg.ReasonLogDir); err != nil {
+			return nil, err
+		}
+	}
+
 	plan := make([]PlanEntry, 0, len(props))
 	// group keys a (repo, artifact) bucket to its shared identity. escalate folds the
 	// branch prefix to chore/* (matching commitType) when any member is an escalate
@@ -75,7 +105,9 @@ func Prepare(proposalsPath, settingsRepo string) ([]PlanEntry, error) {
 		escalate bool
 	}
 	groups := map[string]*group{}
+	byProp := make(map[string]analyst.Proposal, len(props))
 	for _, p := range props {
+		byProp[p.ID] = p
 		e := prepareOne(p, settingsRepo)
 		// Group ready entries by (repo, artifact) so they share a worktree/branch/PR.
 		if e.Status == StatusReady {
@@ -100,6 +132,19 @@ func Prepare(proposalsPath, settingsRepo string) ([]PlanEntry, error) {
 			prefix = "chore"
 		}
 		e.BranchName = prefix + "/agent-smith-" + e.GroupID
+	}
+	// Dedup gate runs after branch names are final: a ready proposal duplicating
+	// pending work — an open PR on its group branch, or a prior reason-log entry on
+	// the same artifact+behavior — is recorded as a duplicate rather than regenerated.
+	for i := range plan {
+		e := &plan[i]
+		if e.Status != StatusReady {
+			continue
+		}
+		if supersedes := dedupGate(byProp[e.ProposalID], e.Target(), openPRs, prior); supersedes != "" {
+			e.Status = StatusDuplicate
+			e.Supersedes = supersedes
+		}
 	}
 	sort.Slice(plan, func(i, j int) bool { return plan[i].ProposalID < plan[j].ProposalID })
 	return plan, nil

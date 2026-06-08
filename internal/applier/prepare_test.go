@@ -29,7 +29,7 @@ func TestPrepareStatuses(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	plan, err := Prepare(pf, "")
+	plan, err := Prepare(pf, "", DedupConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestPrepareGroupsByArtifact(t *testing.T) {
 	if err := os.WriteFile(pf, []byte(proposals), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	plan, err := Prepare(pf, "")
+	plan, err := Prepare(pf, "", DedupConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +121,7 @@ func TestPrepareEscalationRoutesToSettingsRepo(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	plan, err := Prepare(pf, settings)
+	plan, err := Prepare(pf, settings, DedupConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +164,7 @@ func TestPrepareEscalationNoSettingsRepoUnrouted(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	plan, err := Prepare(pf, "")
+	plan, err := Prepare(pf, "", DedupConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +193,7 @@ func TestPrepareEscalationSettingsRepoUnresolvableUnrouted(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	plan, err := Prepare(pf, t.TempDir()) // a dir that is not a git repo
+	plan, err := Prepare(pf, t.TempDir(), DedupConfig{}) // a dir that is not a git repo
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -27,12 +27,17 @@ The unit of work is a **group**: ready proposals sharing a `group_id` (same repo
 artifact) land in one worktree, one branch, one PR. A lone proposal is a group of
 one. This avoids the guaranteed conflict of N PRs all editing the same file.
 
-1. `applier prepare --proposals proposals.json --out apply-plan.json --settings-repo "$AGENT_SMITH_SETTINGS_REPO"`
+1. `applier prepare --proposals proposals.json --out apply-plan.json --settings-repo "$AGENT_SMITH_SETTINGS_REPO" --reason-log-dir reason-log --repo .`
    — `--settings-repo` routes `escalate-out-of-instructions` proposals to the repo
-   owning the Claude Code settings layers; without it they are `skip-unrouted`.
+   owning the Claude Code settings layers; without it they are `skip-unrouted`. This
+   also runs the **pending-work dedup gate**: a proposal whose artifact+behavior
+   already has an open agent-smith PR or an unresolved reason-log entry is marked
+   `skip-duplicate` (with a `supersedes` field) instead of opening a second
+   conflicting PR. Surface these in the final report — do not silently drop them.
 2. Determine the target **groups**: if an id was given, the `group_id` of that
    entry in `apply-plan.json` (read with `jq`); else every distinct `group_id`
-   among entries with `status == "ready"`.
+   among entries with `status == "ready"`. `skip-duplicate` and the other `skip-*`
+   statuses are not targets.
 3. For each target group id:
    a. `applier open --plan apply-plan.json --group <gid>` → capture line 1 as `$WT`
       (worktree), line 2 as `$FILE`, and lines 3+ as the group's proposal ids in
