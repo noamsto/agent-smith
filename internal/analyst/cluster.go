@@ -7,7 +7,22 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path/filepath"
 	"sort"
+)
+
+// Size caps keep a single pretty-printed cluster file comfortably under the
+// Oracle's Read token budget. The transcript windows are the dominant bloat
+// (dozens of incidents x several turns each), so the writer bounds the incident
+// count, the turns per window, and each excerpt; the artifact file is capped
+// whole. Truncations leave a visible marker so the Oracle knows it is reasoning
+// from a sample, not the full text.
+const (
+	maxArtifactContentBytes = 12 * 1024
+	maxWindowExcerptBytes   = 1500
+	maxWindowTurns          = 4  // keep the last N turns of each window — the glitch surfaces at the tail
+	maxIncidentsPerFile     = 25 // cap incidents written per cluster file; the Oracle reasons from a sample
+	truncMarker             = "\n…[truncated by analyst]…"
 )
 
 // Cluster is one actionable group: incidents sharing a candidate artifact and a
@@ -129,7 +144,7 @@ func ClusterDB(ctx context.Context, db string, minSessions, maxIncidents int) (c
 			}
 			return nil, 0, fmt.Errorf("read artifact %s: %w", r.Artifact, err)
 		}
-		s := string(data)
+		s := truncate(string(data), maxArtifactContentBytes)
 		clusters = append(clusters, Cluster{
 			ClusterID:        r.SignalType + "::" + r.Artifact,
 			SignalType:       r.SignalType,
@@ -138,7 +153,7 @@ func ClusterDB(ctx context.Context, db string, minSessions, maxIncidents int) (c
 			ArtifactExists:   true,
 			DistinctSessions: r.DistinctSessions,
 			TotalIncidents:   r.TotalIncidents,
-			Incidents:        r.Incidents,
+			Incidents:        capWindows(r.Incidents),
 		})
 	}
 	return clusters, dropped, nil
@@ -167,11 +182,123 @@ func TopClusters(clusters []Cluster, n int) (kept []Cluster, dropped int) {
 	return ranked[:n], len(ranked) - n
 }
 
-// WriteClusters marshals clusters to outPath as indented JSON.
-func WriteClusters(clusters []Cluster, outPath string) error {
-	data, err := json.MarshalIndent(clusters, "", "  ")
+// truncate returns s unchanged if it fits within max bytes, otherwise the first
+// max bytes plus a visible marker. The cut is byte-aligned; an excerpt is plain
+// text, so a split rune at the boundary is acceptable.
+func truncate(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + truncMarker
+}
+
+// capWindows trims the evidence so a single cluster file stays within the
+// Oracle's Read budget: it keeps the strongest incidents, the last turns of each
+// window, and bounds every excerpt. Non-window fields pass through untouched. On
+// any decode failure it returns the incidents unchanged — capping is best-effort.
+func capWindows(raw json.RawMessage) json.RawMessage {
+	var incidents []map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &incidents); err != nil {
+		return raw
+	}
+	if len(incidents) > maxIncidentsPerFile {
+		// Incidents arrive sorted best-first (session-stratified), so the head is
+		// the strongest representative sample.
+		incidents = incidents[:maxIncidentsPerFile]
+	}
+	for _, inc := range incidents {
+		var window []map[string]json.RawMessage
+		if err := json.Unmarshal(inc["window"], &window); err != nil {
+			continue
+		}
+		if len(window) > maxWindowTurns {
+			window = window[len(window)-maxWindowTurns:]
+		}
+		for _, turn := range window {
+			var excerpt string
+			if err := json.Unmarshal(turn["excerpt"], &excerpt); err != nil {
+				continue
+			}
+			capped, _ := json.Marshal(truncate(excerpt, maxWindowExcerptBytes))
+			turn["excerpt"] = capped
+		}
+		w, _ := json.Marshal(window)
+		inc["window"] = w
+	}
+	out, _ := json.Marshal(incidents)
+	return out
+}
+
+// ClusterIndexEntry is one row of the index: enough for the orchestrator to
+// decide what to dispatch and where each cluster's full JSON lives.
+type ClusterIndexEntry struct {
+	ClusterID        string `json:"cluster_id"`
+	SignalType       string `json:"signal_type"`
+	Artifact         string `json:"artifact"`
+	ArtifactExists   bool   `json:"artifact_exists"`
+	DistinctSessions int    `json:"distinct_sessions"`
+	TotalIncidents   int    `json:"total_incidents"`
+	SampledIncidents int    `json:"sampled_incidents"`
+	File             string `json:"file"` // path to the per-cluster JSON, relative to the index
+}
+
+// WriteClusters writes one pretty-printed file per cluster under <dir>/clusters/
+// and an index array at <dir>/clusters.json. The Oracle reads only its own
+// cluster file, so a single giant minified file can no longer blow the Read cap.
+// indexPath is the index file; per-cluster files live in a sibling clusters/ dir.
+func WriteClusters(clusters []Cluster, indexPath string) error {
+	dir := filepath.Dir(indexPath)
+	clustersDir := filepath.Join(dir, "clusters")
+	if err := os.MkdirAll(clustersDir, 0o755); err != nil {
+		return err
+	}
+
+	index := make([]ClusterIndexEntry, 0, len(clusters))
+	for _, c := range clusters {
+		name := slugify(c.ClusterID)
+		if name == "" {
+			name = fmt.Sprintf("%08x", fnv32a(c.ClusterID))
+		}
+		name = fmt.Sprintf("%s-%08x.json", name, fnv32a(c.ClusterID))
+		file := filepath.Join(clustersDir, name)
+
+		data, err := json.MarshalIndent(c, "", "  ")
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(file, append(data, '\n'), 0o644); err != nil {
+			return err
+		}
+
+		rel, err := filepath.Rel(dir, file)
+		if err != nil {
+			rel = file
+		}
+		index = append(index, ClusterIndexEntry{
+			ClusterID:        c.ClusterID,
+			SignalType:       c.SignalType,
+			Artifact:         c.Artifact,
+			ArtifactExists:   c.ArtifactExists,
+			DistinctSessions: c.DistinctSessions,
+			TotalIncidents:   c.TotalIncidents,
+			SampledIncidents: countIncidents(c.Incidents),
+			File:             rel,
+		})
+	}
+
+	idx, err := json.MarshalIndent(index, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(outPath, append(data, '\n'), 0o644)
+	return os.WriteFile(indexPath, append(idx, '\n'), 0o644)
+}
+
+// countIncidents returns the number of sampled incidents in a cluster's
+// incidents array, or 0 if it cannot be decoded.
+func countIncidents(raw json.RawMessage) int {
+	var arr []json.RawMessage
+	if err := json.Unmarshal(raw, &arr); err != nil {
+		return 0
+	}
+	return len(arr)
 }

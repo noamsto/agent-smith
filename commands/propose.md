@@ -16,17 +16,18 @@ and capture its stdout (one line) as `$BIN`. Prefix every `extractor`/`analyst`/
 invocation with `PATH="$BIN:$PATH"` (each Bash call is a fresh shell; the prefix
 also lets the binaries find `duckdb`). If bootstrap fails, stop and show its error.
 
-Precondition: `clusters.json` exists in the cwd — if missing, run the
-**agent-smith:mine** skill (Skill tool) first.
+Precondition: the cluster index `clusters.json` exists in the cwd, alongside its
+`clusters/` dir of per-cluster files — if missing, run the **agent-smith:mine**
+skill (Skill tool) first.
 
 1. `mkdir -p /tmp/agent-smith-proposals-in`
-2. For each cluster object in `clusters.json` (iterate with `jq -c '.[]'`):
-   - Write that single cluster object to `/tmp/agent-smith-proposals-in/cluster-<i>.json`.
+2. For each index entry in `clusters.json` (iterate with `jq -r '.[].file'`; each
+   entry's `file` is the per-cluster JSON path relative to `clusters.json`'s dir):
    - Dispatch the **agent-smith:oracle** subagent (Agent tool) with this prompt:
-     "Read the cluster at `/tmp/agent-smith-proposals-in/cluster-<i>.json` and follow
-     your instructions to produce ONE proposal. Write the JSON proposal to
-     `/tmp/agent-smith-proposals-in/p-<i>.json` and return only your one-line final
-     message — not the JSON." (Delete the cluster temp after.)
+     "Read the cluster at `<file>` and follow your instructions to produce ONE
+     proposal. Write the JSON proposal to `/tmp/agent-smith-proposals-in/p-<i>.json`
+     and return only your one-line final message — not the JSON. Read the per-cluster
+     file directly — do NOT pass the whole index."
    - If the Oracle errors or writes no file, log a skip and continue.
 3. `analyst assemble --proposals-dir /tmp/agent-smith-proposals-in --out proposals.json --reason-log-dir reason-log`
    (Pass `--date <today>` only if needed; default is today.)

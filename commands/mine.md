@@ -22,9 +22,11 @@ also lets the binaries find `duckdb`). If bootstrap fails, stop and show its err
   encoding `ENC` (replace every `/` and `.` in `$REPO` with `-`). Mine only this
   repo's sessions: pass `--corpus "$HOME/.claude/projects/${ENC}*/*.jsonl"`
   (the trailing `*` catches worktree project dirs).
-- After clustering, keep only clusters whose artifact lives in this repo:
+- After clustering, keep only index entries whose artifact lives in this repo:
   `jq --arg r "$REPO/" '[.[] | select(.artifact | startswith($r))]' clusters.json`
-  (write back to `clusters.json`). This guarantees downstream PRs only ever
+  (write back to `clusters.json` — the index). The orchestrator only dispatches
+  indexed clusters, so filtering the index is enough; leftover per-cluster files
+  in `clusters/` are simply never read. This guarantees downstream PRs only ever
   target the launch repo.
 
 With `all`: no corpus or artifact filter — but after step 2, STOP and show the
@@ -34,8 +36,9 @@ Editor + review, ~50k tokens), and ask the user which scope to proceed with
 
 1. `extractor --out incidents.db` (plus `--corpus` per the scope rule)
 2. `analyst cluster --db incidents.db --out clusters.json --max-incidents-per-cluster 50`
-   (then the artifact filter per the scope rule). `--min-sessions` defaults to 5;
-   add `--top N` to cap the Oracle fleet at the N highest-signal clusters when the
-   user picks a top-N scope above (the command logs the drop count and cutoff).
-3. Print a one-line-per-cluster summary (signal_type, artifact basename,
-   distinct_sessions, total_incidents, sampled count) using `jq`.
+   (writes the index `clusters.json` + per-cluster files under `clusters/`; then the
+   artifact filter per the scope rule). `--min-sessions` defaults to 5; add `--top N`
+   to cap the Oracle fleet at the N highest-signal clusters when the user picks a
+   top-N scope above (the command logs the drop count and cutoff).
+3. Print a one-line-per-cluster summary from the index (signal_type, artifact
+   basename, distinct_sessions, total_incidents, sampled_incidents) using `jq`.
