@@ -166,6 +166,117 @@ func TestClusterCanonicalizesWorktreePaths(t *testing.T) {
 	}
 }
 
+func TestClusterDBCapsBloat(t *testing.T) {
+	dir := t.TempDir()
+	artifact := filepath.Join(dir, "CLAUDE.md")
+	bigContent := strings.Repeat("x", maxArtifactContentBytes+5000)
+	if err := os.WriteFile(artifact, []byte(bigContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bigExcerpt := strings.Repeat("y", maxWindowExcerptBytes+2000)
+	win := `[{"turn":1,"type":"assistant","excerpt":"` + bigExcerpt + `"}]`
+
+	ins := `INSERT INTO incidents VALUES
+	 (md5('i1'),'s1','/p','2026-05-01T10:00:00Z','inefficiency','` + artifact + `',
+	   '["` + artifact + `"]'::JSON,'` + win + `'::JSON,'high','{}'::JSON),
+	 (md5('i2'),'s2','/p','2026-05-01T11:00:00Z','inefficiency','` + artifact + `',
+	   '["` + artifact + `"]'::JSON,'` + win + `'::JSON,'high','{}'::JSON),
+	 (md5('i3'),'s3','/p','2026-05-01T12:00:00Z','inefficiency','` + artifact + `',
+	   '["` + artifact + `"]'::JSON,'` + win + `'::JSON,'high','{}'::JSON);`
+	db := makeIncidentsDB(t, ins)
+
+	clusters, _, err := ClusterDB(context.Background(), db, 3, 0)
+	if err != nil {
+		t.Fatalf("ClusterDB: %v", err)
+	}
+	if len(clusters) != 1 {
+		t.Fatalf("expected 1 cluster, got %d", len(clusters))
+	}
+	c := clusters[0]
+	if c.ArtifactContent == nil || len(*c.ArtifactContent) > maxArtifactContentBytes+len(truncMarker) {
+		t.Errorf("artifact_content not capped: len=%v", len(*c.ArtifactContent))
+	}
+	if !strings.HasSuffix(*c.ArtifactContent, truncMarker) {
+		t.Errorf("capped artifact_content missing truncation marker")
+	}
+	var incidents []struct {
+		Window []struct {
+			Excerpt string `json:"excerpt"`
+		} `json:"window"`
+	}
+	if err := json.Unmarshal(c.Incidents, &incidents); err != nil {
+		t.Fatalf("unmarshal incidents: %v", err)
+	}
+	for _, inc := range incidents {
+		for _, w := range inc.Window {
+			if len(w.Excerpt) > maxWindowExcerptBytes+len(truncMarker) {
+				t.Errorf("window excerpt not capped: len=%d", len(w.Excerpt))
+			}
+			if !strings.HasSuffix(w.Excerpt, truncMarker) {
+				t.Errorf("capped excerpt missing truncation marker")
+			}
+		}
+	}
+}
+
+func TestWriteClustersPerFileAndIndex(t *testing.T) {
+	clusters := []Cluster{
+		{
+			ClusterID: "inefficiency::/g/CLAUDE.md", SignalType: "inefficiency",
+			Artifact: "/g/CLAUDE.md", ArtifactExists: true,
+			DistinctSessions: 3, TotalIncidents: 9,
+			Incidents: json.RawMessage(`[{"turn":1},{"turn":2}]`),
+		},
+		{
+			ClusterID: "tool_error::/p/CLAUDE.md", SignalType: "tool_error",
+			Artifact: "/p/CLAUDE.md", ArtifactExists: false,
+			DistinctSessions: 4, TotalIncidents: 4,
+			Incidents: json.RawMessage(`[]`),
+		},
+	}
+	dir := t.TempDir()
+	indexPath := filepath.Join(dir, "clusters.json")
+	if err := WriteClusters(clusters, indexPath); err != nil {
+		t.Fatal(err)
+	}
+
+	idxData, err := os.ReadFile(indexPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes := idxData; strings.Count(string(bytes), "\n") < 2 {
+		t.Errorf("index is not pretty-printed:\n%s", bytes)
+	}
+	var index []ClusterIndexEntry
+	if err := json.Unmarshal(idxData, &index); err != nil {
+		t.Fatalf("index round-trip: %v", err)
+	}
+	if len(index) != 2 {
+		t.Fatalf("expected 2 index entries, got %d", len(index))
+	}
+	if index[0].SampledIncidents != 2 || index[1].SampledIncidents != 0 {
+		t.Errorf("sampled_incidents = %d, %d", index[0].SampledIncidents, index[1].SampledIncidents)
+	}
+
+	for _, e := range index {
+		full := filepath.Join(dir, e.File)
+		data, err := os.ReadFile(full)
+		if err != nil {
+			t.Fatalf("per-cluster file %s missing: %v", e.File, err)
+		}
+		if strings.Count(string(data), "\n") < 2 {
+			t.Errorf("per-cluster file %s not pretty-printed", e.File)
+		}
+		var c Cluster
+		if err := json.Unmarshal(data, &c); err != nil {
+			t.Fatalf("per-cluster %s round-trip: %v", e.File, err)
+		}
+		if c.ClusterID != e.ClusterID {
+			t.Errorf("file/index mismatch: %q vs %q", c.ClusterID, e.ClusterID)
+		}
+	}
+}
+
 func TestClusterSamplesStratifiedBySession(t *testing.T) {
 	// 5 sessions x 3 incidents (15 total) on /g/CLAUDE.md. Each session has one
 	// 'high' (i=0) and two 'low'. A cap of 5 must pick exactly one per session and,

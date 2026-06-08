@@ -33,7 +33,7 @@ func main() {
 func runCluster(args []string) {
 	fs := flag.NewFlagSet("cluster", flag.ExitOnError)
 	db := fs.String("db", "incidents.db", "incidents DuckDB file")
-	out := fs.String("out", "clusters.json", "output clusters file")
+	out := fs.String("out", "clusters.json", "cluster index file; per-cluster JSON is written to a sibling clusters/ dir")
 	minSessions := fs.Int("min-sessions", 5, "minimum distinct sessions for an actionable cluster")
 	maxIncidents := fs.Int("max-incidents-per-cluster", 50, "cap incidents per cluster fed to the Oracle (session-stratified sample); 0 = uncapped")
 	top := fs.Int("top", 0, "keep only the top N clusters by signal strength (distinct_sessions, then total_incidents); 0 = keep all")
@@ -57,7 +57,7 @@ func runCluster(args []string) {
 		fmt.Fprintln(os.Stderr, "analyst cluster:", err)
 		os.Exit(1)
 	}
-	fmt.Printf("wrote %d clusters to %s\n", len(clusters), *out)
+	fmt.Printf("wrote %d clusters: index %s + clusters/<id>.json\n", len(clusters), *out)
 }
 
 func runAssemble(args []string) {
