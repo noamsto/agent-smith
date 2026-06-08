@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/noamsto/agent-smith/internal/extractor"
 )
@@ -35,9 +36,29 @@ func main() {
 		}
 	}
 
+	// Default --since to the previous run's marker so a re-mine (deja-vu) only
+	// processes sessions newer than last time. An explicit --since (even "") wins.
+	sinceSet := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "since" {
+			sinceSet = true
+		}
+	})
+	if !sinceSet {
+		if m := extractor.ReadMarker(cfg.OutDB); m != "" {
+			cfg.Since = m
+			fmt.Fprintf(os.Stderr, "extractor: --since defaulted to last-run marker %s\n", m)
+		}
+	}
+
+	runStart := time.Now()
 	ctx := context.Background()
 	if err := extractor.Run(ctx, cfg); err != nil {
 		fmt.Fprintln(os.Stderr, "extractor:", err)
+		os.Exit(1)
+	}
+	if err := extractor.WriteMarker(cfg.OutDB, runStart); err != nil {
+		fmt.Fprintln(os.Stderr, "extractor: write last-run marker:", err)
 		os.Exit(1)
 	}
 	summary, err := extractor.Summary(ctx, cfg.OutDB)

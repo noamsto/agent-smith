@@ -41,7 +41,8 @@ func TestLoadProposalsValidatesDedupsAndRejects(t *testing.T) {
 func TestWriteProposalsAndReasonLogs(t *testing.T) {
 	props := []Proposal{{
 		ID: "glitch-skeleton", ImplicatedArtifact: "/g/CLAUDE.md#reading-code",
-		FixType: "strengthen", Evidence: []string{"s1:1", "≥3 sessions"},
+		SignalType: "inefficiency",
+		FixType:    "strengthen", Evidence: []string{"s1:1", "≥3 sessions"},
 		Diagnosis: "rule ignored", ProposedChange: "make imperative",
 		Confidence: "high", ReasonLog: "fewer whole-file reads",
 	}}
@@ -65,6 +66,12 @@ func TestWriteProposalsAndReasonLogs(t *testing.T) {
 	if !strings.Contains(string(entry), "make imperative") ||
 		!strings.Contains(string(entry), "## Diagnosis") {
 		t.Errorf("reason-log missing content:\n%s", entry)
+	}
+	if !strings.Contains(string(entry), "**Signal:** inefficiency") {
+		t.Errorf("reason-log missing signal line:\n%s", entry)
+	}
+	if !strings.Contains(string(entry), "<!-- outcome: open -->") {
+		t.Errorf("reason-log missing initial outcome marker:\n%s", entry)
 	}
 	// Append-only: a second run must NOT overwrite an existing entry, even if the
 	// proposal content changed.

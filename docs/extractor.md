@@ -12,6 +12,18 @@ go run ./cmd/extractor --signals inefficiency --since 2026-05-01 --out /tmp/x.db
 go run ./cmd/extractor --memory-limit 8GB   # override the DuckDB memory cap
 ```
 
+## Last-run marker (incremental re-mining)
+
+When `--since` is **omitted**, the extractor defaults its lower bound to the
+timestamp of the previous run, persisted at `<OutDB>.last-run` (e.g.
+`incidents.db.last-run`, an RFC3339 line written next to the db). This makes the
+deja-vu loop incremental: each re-mine only processes sessions newer than last
+time. The marker is written on every successful run, stamped at run start so
+records arriving mid-run are picked up next time.
+
+- Force a full re-mine: delete `<OutDB>.last-run`, or pass `--since ""`.
+- An explicit `--since <ts>` always wins over the marker.
+
 Or build and run the packaged binary (duckdb is wrapped onto PATH):
 
 ```bash

@@ -31,9 +31,9 @@ func writeReasonLogEntry(t *testing.T, dir, id, artifact, prURL string, resolved
 		content += "**PR:** " + prURL + "\n\n"
 	}
 	if !resolved {
-		content += outcomePlaceholder + "\n"
+		content += "<!-- outcome: " + analyst.OutcomeOpen + " -->\n"
 	} else {
-		content += "Merged; behavior improved.\n"
+		content += "<!-- outcome: " + analyst.OutcomeMerged + " -->\n"
 	}
 	if err := os.WriteFile(filepath.Join(dir, id+".md"), []byte(content), 0o644); err != nil {
 		t.Fatal(err)

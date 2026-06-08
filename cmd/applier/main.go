@@ -15,7 +15,7 @@ var version = "dev"
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: applier <prepare|open|submit|suggest> [flags]")
+		fmt.Fprintln(os.Stderr, "usage: applier <prepare|open|submit|suggest|reconcile> [flags]")
 		os.Exit(2)
 	}
 	switch os.Args[1] {
@@ -29,6 +29,8 @@ func main() {
 		runSubmit(os.Args[2:])
 	case "suggest":
 		runSuggest(os.Args[2:])
+	case "reconcile":
+		runReconcile(os.Args[2:])
 	default:
 		fmt.Fprintf(os.Stderr, "unknown subcommand %q\n", os.Args[1])
 		os.Exit(2)
@@ -232,6 +234,30 @@ func runSuggest(args []string) {
 		}
 	}
 	fmt.Printf("wrote suggestions for %d proposal(s) (%d actionable) to %s\n", len(plan), ready, *out)
+}
+
+func runReconcile(args []string) {
+	fs := flag.NewFlagSet("reconcile", flag.ExitOnError)
+	reasonLog := fs.String("reason-log-dir", "reason-log", "reason-log directory")
+	_ = fs.Parse(args)
+
+	repos, err := applier.EntryRepos(*reasonLog)
+	if err != nil {
+		fatal(err)
+	}
+	var statuses []applier.PRStatus
+	for _, repo := range repos {
+		s, err := applier.FetchPRStatuses(applier.Run, repo)
+		if err != nil {
+			fatal(err)
+		}
+		statuses = append(statuses, s...)
+	}
+	n, err := applier.Reconcile(*reasonLog, statuses)
+	if err != nil {
+		fatal(err)
+	}
+	fmt.Printf("reconciled %d reason-log outcome(s) across %d repo(s)\n", n, len(repos))
 }
 
 func loadEditorResult(path string) (applier.EditorResult, error) {

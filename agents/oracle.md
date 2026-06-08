@@ -54,6 +54,7 @@ Strength must scale with frequency/severity and prior-run history — never deny
 - Propose changes to THIS artifact only.
 - `implicated_artifact` should name the artifact and, where meaningful, the section (e.g. `/path/CLAUDE.md#reading-code`).
 - Output valid JSON only **to the output file**, matching the schema below. No markdown fences, no commentary.
+- Echo the input cluster's `signal_type` verbatim into the output — the analyst keys the reason-log's deja-vu memory on (artifact, signal), so a rejected proposal is never regenerated.
 
 ## Output
 
@@ -69,6 +70,7 @@ prose summary would flood its context. Format:
 {
   "id": "<kebab-slug, e.g. glitch-2026-06-01-skeleton-reads>",
   "implicated_artifact": "<artifact path, optionally #section>",
+  "signal_type": "<echo the cluster's signal_type verbatim>",
   "fix_type": "<add|strengthen|fix-stale|remove|escalate-out-of-instructions|skip>",
   "evidence": ["<session_id:turn>", "...", "≥N sessions"],
   "diagnosis": "<what's wrong>",
