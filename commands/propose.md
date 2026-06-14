@@ -20,7 +20,11 @@ Precondition: the cluster index `clusters.json` exists in the cwd, alongside its
 `clusters/` dir of per-cluster files — if missing, run the **agent-smith:mine**
 skill (Skill tool) first.
 
-1. `mkdir -p /tmp/agent-smith-proposals-in`
+1. Reset the proposal input dir, then create it:
+   `rm -rf /tmp/agent-smith-proposals-in && mkdir -p /tmp/agent-smith-proposals-in`.
+   `assemble` (step 4) globs every `*.json` here, so a prior run's leftover
+   `p-*.json` — which may target *other* repos — would be swept into this run and
+   open PRs against the wrong repo. Always start from an empty dir.
 2. For each index entry in `clusters.json` (iterate with `jq -r '.[].file'`; each
    entry's `file` is the per-cluster JSON path relative to `clusters.json`'s dir):
    - Dispatch the **agent-smith:oracle** subagent (Agent tool) with this prompt:
