@@ -10,10 +10,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      # Tests shell out to duckdb (and git); the devShell provides both.
+      - uses: cachix/install-nix-action@v31
         with:
-          go-version-file: go.mod
-      - run: go test ./...
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+      - run: nix develop --command go test ./...
 
   build:
     runs-on: ubuntu-latest
