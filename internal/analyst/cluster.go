@@ -180,27 +180,58 @@ func ClusterDB(ctx context.Context, db string, minSessions, maxIncidents, staleD
 	return clusters, dropped, nil
 }
 
-// TopClusters ranks clusters by signal strength — distinct_sessions, then
-// total_incidents, with cluster_id as a deterministic tiebreak — and keeps the
-// top n. n <= 0 keeps all. It returns the kept clusters and the dropped count
-// so callers can surface the truncation rather than letting it stay silent.
-func TopClusters(clusters []Cluster, n int) (kept []Cluster, dropped int) {
-	if n <= 0 || len(clusters) <= n {
-		return clusters, 0
-	}
+// RankClusters selects the diagnosis fleet. By default the fleet is the top n
+// clusters with in-window activity (recent_sessions > 0), ranked by recent
+// intensity, then lifetime breadth, then recency. Backlog clusters (no in-window
+// activity) are excluded from the default fleet and reported via droppedBacklog —
+// never deleted; pass includeStale to rank every cluster by lifetime breadth (the
+// historical-backlog mode). n <= 0 keeps all selected clusters. droppedTop is how
+// many in-fleet candidates the cap dropped.
+func RankClusters(clusters []Cluster, n int, includeStale bool) (fleet []Cluster, droppedBacklog, droppedTop int) {
 	ranked := make([]Cluster, len(clusters))
 	copy(ranked, clusters)
-	sort.SliceStable(ranked, func(i, j int) bool {
-		a, b := ranked[i], ranked[j]
-		if a.DistinctSessions != b.DistinctSessions {
-			return a.DistinctSessions > b.DistinctSessions
+	if includeStale {
+		sort.SliceStable(ranked, func(i, j int) bool { return lessBacklog(ranked[i], ranked[j]) })
+		fleet, droppedTop = cut(ranked, n)
+		return fleet, 0, droppedTop
+	}
+	var live, backlog []Cluster
+	for _, c := range ranked {
+		if c.RecentSessions > 0 {
+			live = append(live, c)
+		} else {
+			backlog = append(backlog, c)
 		}
-		if a.TotalIncidents != b.TotalIncidents {
-			return a.TotalIncidents > b.TotalIncidents
-		}
-		return a.ClusterID < b.ClusterID
-	})
+	}
+	sort.SliceStable(live, func(i, j int) bool { return lessLive(live[i], live[j]) })
+	fleet, droppedTop = cut(live, n)
+	return fleet, len(backlog), droppedTop
+}
+
+func cut(ranked []Cluster, n int) (kept []Cluster, dropped int) {
+	if n <= 0 || len(ranked) <= n {
+		return ranked, 0
+	}
 	return ranked[:n], len(ranked) - n
+}
+
+// lessLive ranks by recent intensity first; lessBacklog by lifetime breadth. Both
+// fall back to last_seen (ISO ts, descending) then cluster_id for determinism.
+func lessLive(a, b Cluster) bool {
+	if a.RecentSessions != b.RecentSessions {
+		return a.RecentSessions > b.RecentSessions
+	}
+	return lessBacklog(a, b)
+}
+
+func lessBacklog(a, b Cluster) bool {
+	if a.DistinctSessions != b.DistinctSessions {
+		return a.DistinctSessions > b.DistinctSessions
+	}
+	if a.LastSeen != b.LastSeen {
+		return a.LastSeen > b.LastSeen
+	}
+	return a.ClusterID < b.ClusterID
 }
 
 // truncate returns s unchanged if it fits within max bytes, otherwise the first

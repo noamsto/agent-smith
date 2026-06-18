@@ -400,31 +400,6 @@ func TestClusterUncappedKeepsAllIncidents(t *testing.T) {
 	}
 }
 
-func TestTopClustersRanksAndTruncates(t *testing.T) {
-	clusters := []Cluster{
-		{ClusterID: "a", DistinctSessions: 4, TotalIncidents: 10},
-		{ClusterID: "b", DistinctSessions: 9, TotalIncidents: 12},
-		{ClusterID: "c", DistinctSessions: 9, TotalIncidents: 30}, // ties b on sessions, wins on incidents
-		{ClusterID: "d", DistinctSessions: 6, TotalIncidents: 50},
-		{ClusterID: "e", DistinctSessions: 4, TotalIncidents: 99},
-	}
-	kept, dropped := TopClusters(clusters, 3)
-	if dropped != 2 {
-		t.Fatalf("dropped = %d, want 2", dropped)
-	}
-	gotIDs := []string{kept[0].ClusterID, kept[1].ClusterID, kept[2].ClusterID}
-	want := []string{"c", "b", "d"}
-	for i := range want {
-		if gotIDs[i] != want[i] {
-			t.Fatalf("ranking = %v, want %v", gotIDs, want)
-		}
-	}
-	// Cutoff (last kept) is what the CLI logs alongside the drop count.
-	cutoff := kept[len(kept)-1]
-	if cutoff.DistinctSessions != 6 || cutoff.TotalIncidents != 50 {
-		t.Errorf("cutoff = %d sessions / %d incidents, want 6 / 50", cutoff.DistinctSessions, cutoff.TotalIncidents)
-	}
-}
 
 func TestClusterRecencyColumns(t *testing.T) {
 	// Corpus newest active day = 2026-06-20. With staleDays=3 the live window's 3
@@ -475,15 +450,50 @@ func TestClusterRecencyColumns(t *testing.T) {
 	}
 }
 
-func TestTopClustersKeepsAllWhenUnsetOrUnderCap(t *testing.T) {
-	clusters := []Cluster{
-		{ClusterID: "a", DistinctSessions: 9},
-		{ClusterID: "b", DistinctSessions: 4},
+func TestRankClusters(t *testing.T) {
+	zombie := Cluster{ClusterID: "z", DistinctSessions: 80, RecentSessions: 1, LastSeen: "2026-06-20T00:00:00Z"}
+	active := Cluster{ClusterID: "a", DistinctSessions: 6, RecentSessions: 6, LastSeen: "2026-06-20T00:00:00Z"}
+	backlog := Cluster{ClusterID: "b", DistinctSessions: 50, RecentSessions: 0, LastSeen: "2026-05-01T00:00:00Z"}
+
+	fleet, droppedBacklog, droppedTop := RankClusters([]Cluster{zombie, active, backlog}, 8, false)
+	if len(fleet) != 2 {
+		t.Fatalf("fleet = %d clusters, want 2 (backlog excluded)", len(fleet))
 	}
-	for _, n := range []int{0, -1, 2, 5} {
-		kept, dropped := TopClusters(clusters, n)
-		if dropped != 0 || len(kept) != len(clusters) {
-			t.Errorf("n=%d: kept %d, dropped %d; want all kept, 0 dropped", n, len(kept), dropped)
+	if fleet[0].ClusterID != "a" {
+		t.Errorf("active (6 recent) should outrank zombie (1 recent); got %q first", fleet[0].ClusterID)
+	}
+	if droppedBacklog != 1 || droppedTop != 0 {
+		t.Errorf("droppedBacklog=%d droppedTop=%d, want 1/0", droppedBacklog, droppedTop)
+	}
+
+	// n <= 0 keeps every selected (live) cluster — the uncapped invariant.
+	for _, n := range []int{0, -1} {
+		keepAll, db, dt := RankClusters([]Cluster{zombie, active, backlog}, n, false)
+		if len(keepAll) != 2 || db != 1 || dt != 0 {
+			t.Errorf("n=%d: len=%d droppedBacklog=%d droppedTop=%d, want 2/1/0", n, len(keepAll), db, dt)
 		}
+	}
+
+	// includeStale ranks all by lifetime breadth — backlog re-enters, ranked by distinct_sessions.
+	all, db2, dt2 := RankClusters([]Cluster{zombie, active, backlog}, 8, true)
+	if len(all) != 3 || db2 != 0 || dt2 != 0 {
+		t.Fatalf("includeStale: len=%d droppedBacklog=%d droppedTop=%d, want 3/0/0", len(all), db2, dt2)
+	}
+	if all[0].ClusterID != "z" || all[1].ClusterID != "b" || all[2].ClusterID != "a" {
+		t.Errorf("backlog mode ranks by lifetime (80/50/6): want z,b,a; got %q,%q,%q", all[0].ClusterID, all[1].ClusterID, all[2].ClusterID)
+	}
+
+	// the cap drops lowest-ranked live clusters and reports the count.
+	capped, _, dt3 := RankClusters([]Cluster{zombie, active}, 1, false)
+	if len(capped) != 1 || dt3 != 1 || capped[0].ClusterID != "a" {
+		t.Errorf("cap: len=%d droppedTop=%d first=%q, want 1/1/a", len(capped), dt3, capped[0].ClusterID)
+	}
+
+	// tie on recent + lifetime falls back to last_seen (descending), so the fresher one leads.
+	older := Cluster{ClusterID: "old", DistinctSessions: 5, RecentSessions: 5, LastSeen: "2026-06-01T00:00:00Z"}
+	newer := Cluster{ClusterID: "new", DistinctSessions: 5, RecentSessions: 5, LastSeen: "2026-06-15T00:00:00Z"}
+	tied, _, _ := RankClusters([]Cluster{older, newer}, 8, false)
+	if tied[0].ClusterID != "new" {
+		t.Errorf("last_seen tiebreak: fresher cluster should lead, got %q first", tied[0].ClusterID)
 	}
 }
