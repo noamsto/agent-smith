@@ -45,12 +45,8 @@ type PullRequest struct {
 	URL         string `json:"url"`
 }
 
-// ListOpenPRs is a source of this repo's open PRs. The production implementation
-// shells out to `gh`; tests inject a fixed slice.
-type ListOpenPRs func() ([]PullRequest, error)
-
 // GhOpenPRs returns the open PRs for the repo rooted at dir via the gh CLI.
-func GhOpenPRs(run runner, dir string) ListOpenPRs {
+func GhOpenPRs(run runner, dir string) func() ([]PullRequest, error) {
 	return func() ([]PullRequest, error) {
 		out, err := run(dir, "gh", "pr", "list", "--state", "open",
 			"--json", "number,title,headRefName,url")

@@ -53,12 +53,14 @@ func (e PlanEntry) Target() Target {
 	}
 }
 
-// DedupConfig supplies the pending-work dedup gate its two sources: the repo's
-// open PRs and the prior reason-log history. Both are optional — a zero config
-// disables dedup. ListOpenPRs is injected so tests run offline.
+// DedupConfig supplies the pending-work dedup gate its two sources: per-repo open
+// PRs and the prior reason-log history. Both are optional — a zero config disables
+// dedup. OpenPRsForRepo is injected so tests run offline; it is called once per
+// distinct target repo and is expected to fail open (return nil, nil) rather than
+// erroring on a repo it cannot query.
 type DedupConfig struct {
-	ListOpenPRs  ListOpenPRs
-	ReasonLogDir string
+	OpenPRsForRepo func(repoRoot string) ([]PullRequest, error)
+	ReasonLogDir   string
 }
 
 // Prepare reads proposals.json (an array of analyst.Proposal), resolves each, and
@@ -84,11 +86,20 @@ func Prepare(proposalsPath, settingsRepo string, cfg DedupConfig, includeLowConf
 		return nil, fmt.Errorf("parse %s: %w", proposalsPath, err)
 	}
 
-	var openPRs []PullRequest
-	if cfg.ListOpenPRs != nil {
-		if openPRs, err = cfg.ListOpenPRs(); err != nil {
-			return nil, err
+	prByRepo := map[string][]PullRequest{}
+	openPRsFor := func(root string) []PullRequest {
+		if cfg.OpenPRsForRepo == nil || root == "" {
+			return nil
 		}
+		if prs, ok := prByRepo[root]; ok {
+			return prs
+		}
+		prs, err := cfg.OpenPRsForRepo(root)
+		if err != nil {
+			prs = nil // fail open: a repo we cannot query never blocks; reason-log dedup still applies
+		}
+		prByRepo[root] = prs
+		return prs
 	}
 	var prior []reasonLogEntry
 	if cfg.ReasonLogDir != "" {
@@ -147,7 +158,7 @@ func Prepare(proposalsPath, settingsRepo string, cfg DedupConfig, includeLowConf
 		if e.Status != StatusReady {
 			continue
 		}
-		if supersedes := dedupGate(byProp[e.ProposalID], e.Target(), openPRs, prior); supersedes != "" {
+		if supersedes := dedupGate(byProp[e.ProposalID], e.Target(), openPRsFor(e.RepoRoot), prior); supersedes != "" {
 			e.Status = StatusDuplicate
 			e.Supersedes = supersedes
 		}
