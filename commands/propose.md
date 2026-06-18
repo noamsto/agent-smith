@@ -20,12 +20,15 @@ Precondition: the cluster index `clusters.json` exists in the cwd, alongside its
 `clusters/` dir of per-cluster files — if missing, run the **agent-smith:mine**
 skill (Skill tool) first.
 
-1. `mkdir -p /tmp/agent-smith-proposals-in`
+1. Create a unique per-run input dir so concurrent runs and prior runs can't bleed:
+   `RUNID="$(date +%Y%m%dT%H%M%S)-$$"; export PROPOSALS_DIR="/tmp/agent-smith-$RUNID"; mkdir -p "$PROPOSALS_DIR"`.
+   Use `$PROPOSALS_DIR` everywhere this skill previously used `$PROPOSALS_DIR`
+   (Oracle/Skeptic outputs `p-*.json` / `v-*.json`, and the `analyst assemble --proposals-dir "$PROPOSALS_DIR"` call).
 2. For each index entry in `clusters.json` (iterate with `jq -r '.[].file'`; each
    entry's `file` is the per-cluster JSON path relative to `clusters.json`'s dir):
    - Dispatch the **agent-smith:oracle** subagent (Agent tool) with this prompt:
      "Read the cluster at `<file>` and follow your instructions to produce ONE
-     proposal. Write the JSON proposal to `/tmp/agent-smith-proposals-in/p-<i>.json`
+     proposal. Write the JSON proposal to `$PROPOSALS_DIR/p-<i>.json`
      and return only your one-line final message — not the JSON. Read the per-cluster
      file directly — do NOT pass the whole index."
    - If the Oracle errors or writes no file, log a skip and continue.
@@ -33,9 +36,9 @@ skill (Skill tool) first.
    into human triage; an unverified inference (e.g. "no guidance exists" judged
    without resolving `@AGENTS.md`) propagates to wrong PRs. For each `p-<i>.json`
    the Oracle wrote, dispatch the **agent-smith:skeptic** subagent (Agent tool):
-   "Read the proposal at `/tmp/agent-smith-proposals-in/p-<i>.json` and follow your
+   "Read the proposal at `$PROPOSALS_DIR/p-<i>.json` and follow your
    instructions to refute it against the actual repo. Write the verdict JSON to
-   `/tmp/agent-smith-proposals-in/v-<i>.json` and return only your one-line final
+   `$PROPOSALS_DIR/v-<i>.json` and return only your one-line final
    message — not the JSON."
    - If the skeptic returns `verdict: refuted`, **drop** that proposal: delete
      `p-<i>.json` so it never reaches assembly. If it errors or writes no verdict,
@@ -44,7 +47,12 @@ skill (Skill tool) first.
      `reason_log` so they ride into the PR.
    - Record every dropped proposal (id + skeptic `reason`) for the report — surface
      them, never silently discard.
-4. `analyst assemble --proposals-dir /tmp/agent-smith-proposals-in --out proposals.json --reason-log-dir reason-log`
+4. `analyst assemble --proposals-dir $PROPOSALS_DIR --out proposals.json --reason-log-dir reason-log`
    (Pass `--date <today>` only if needed; default is today.)
 5. Report the assembled proposals (id, fix_type, confidence) AND the proposals the
    skeptic refuted (id + reason). This phase is review-only — no edits, no PRs.
+
+Finally, print the exact follow-up so `apply` targets this run's dir, not a stale one:
+`echo "next: /agent-smith:apply  (proposals dir: $PROPOSALS_DIR)"`. The apply phase
+defaults to the newest `/tmp/agent-smith-*` dir but pass this one explicitly when
+multiple runs overlap.
