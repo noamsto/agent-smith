@@ -1,14 +1,16 @@
 ---
-description: Run the whole agent-smith loop autonomously — mine session glitches, diagnose fixes (Oracle), open draft PRs (Editor). Scoped to the current repo by default; pass `all` for cross-repo.
+description: Run the whole agent-smith loop — mine (wide, recency-capped) → propose → apply (draft PRs). Halts at the post-mine checkpoint unless you pass `yes`. Args `repo`/`top N`/`stale`/`yes` forward to mine.
 allowed-tools: Bash, Read, Write, Agent, Skill
 ---
 
 You are orchestrating the **full agent-smith loop**. Execute the three phases in
-order by invoking the sibling skills with the Skill tool, each to completion:
+order by invoking the sibling skills with the Skill tool:
 
-1. **agent-smith:mine** (pass `$ARGUMENTS` through — bare = scoped to the repo
-   you're launched in; `all` = cross-repo, which pauses after mine for a scope
-   decision before continuing)
+1. **agent-smith:mine** — forward `$ARGUMENTS` verbatim (`repo` / `top N` / `stale` /
+   `yes`). **mine always halts at its checkpoint** (it prints the fleet table + cost,
+   then blocks) **unless `$ARGUMENTS` contains `yes`**. So a bare `/agent-smith:run`
+   stops for your confirmation after mining; `/agent-smith:run yes` runs hands-off
+   (scheduled/cron use) — the `--top` cap is the cost bound either way.
 2. **agent-smith:propose** (each Oracle proposal then faces a **skeptic** pass that
    refutes it against the real repo; refuted proposals are dropped before assembly)
 3. **agent-smith:apply** (no id → every ready group; one PR per artifact group;
