@@ -292,6 +292,8 @@ type ClusterIndexEntry struct {
 	ArtifactExists   bool   `json:"artifact_exists"`
 	DistinctSessions int    `json:"distinct_sessions"`
 	TotalIncidents   int    `json:"total_incidents"`
+	LastSeen         string `json:"last_seen"`
+	RecentSessions   int    `json:"recent_sessions"`
 	SampledIncidents int    `json:"sampled_incidents"`
 	File             string `json:"file"` // path to the per-cluster JSON, relative to the index
 }
@@ -335,6 +337,8 @@ func WriteClusters(clusters []Cluster, indexPath string) error {
 			ArtifactExists:   c.ArtifactExists,
 			DistinctSessions: c.DistinctSessions,
 			TotalIncidents:   c.TotalIncidents,
+			LastSeen:         c.LastSeen,
+			RecentSessions:   c.RecentSessions,
 			SampledIncidents: countIncidents(c.Incidents),
 			File:             rel,
 		})
@@ -373,6 +377,8 @@ func canonicalizeRepoPrefix(repoRoot string) string {
 	if !strings.HasSuffix(p, "/") {
 		p += "/"
 	}
+	// ReplaceAllString replaces every match while DuckDB's regexp_replace replaces only
+	// the first; for realistic paths (git disallows worktree-in-worktree) this is equivalent.
 	p = inRepoWorktreeRe.ReplaceAllString(p, "/")
 	p = siblingWorktreeRe.ReplaceAllString(p, "$1/")
 	return p

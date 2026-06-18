@@ -519,6 +519,10 @@ func TestFilterByPrefix(t *testing.T) {
 	if len(got) != 1 || got[0].ClusterID != "1" {
 		t.Errorf("sibling layout: got %+v, want cluster 1", got)
 	}
+	// Already-trailing-slash prefix must not double-append the separator.
+	if got := FilterByPrefix(clusters, "/home/u/repo/"); len(got) != 1 || got[0].ClusterID != "1" {
+		t.Errorf("trailing-slash prefix: got %+v, want cluster 1", got)
+	}
 	// Empty prefix is a no-op (wide default).
 	if len(FilterByPrefix(clusters, "")) != 3 {
 		t.Errorf("empty prefix should keep all")
