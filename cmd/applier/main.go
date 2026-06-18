@@ -56,6 +56,8 @@ func runPrepare(args []string) {
 	cfg := applier.DedupConfig{}
 	if !*noDedup {
 		cfg = applier.DedupConfig{
+			// Fail open at the CLI boundary so the operator sees a warning naming the
+			// repo; Prepare also fails open on a non-nil error as defense in depth.
 			OpenPRsForRepo: func(root string) ([]applier.PullRequest, error) {
 				prs, err := applier.GhOpenPRs(applier.Run, root)()
 				if err != nil {

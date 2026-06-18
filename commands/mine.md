@@ -36,7 +36,8 @@ warn on unknown tokens):
    plus `--artifact-prefix "$REPO"` if `repo`, and `--include-stale` if `stale`. The
    binary applies the pipeline: cluster → drop-missing → artifact-prefix → reason-log
    dedup → recency rank → top-N, and logs suppressed counts (backlog / closed-rejected)
-   to stderr. `--min-sessions` defaults to 5.
+   to stderr. `--min-sessions` defaults to 5; `--stale-after-days` (default 14) sets the
+   recency window used to label backlog clusters.
 4. **CHECKPOINT (always).** Print one row per fleet cluster from the index:
    `signal_type · artifact basename · repo · recent_sessions · distinct_sessions · last_seen`.
    Below it echo the stderr suppressed summary. Then print the cost estimate:
