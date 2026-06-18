@@ -8,7 +8,9 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strings"
 )
 
 // Size caps keep a single pretty-printed cluster file comfortably under the
@@ -353,4 +355,41 @@ func countIncidents(raw json.RawMessage) int {
 		return 0
 	}
 	return len(arr)
+}
+
+// Worktree-path canonicalization mirrored from clusterSQL's regexes — KEEP IN SYNC.
+// A repo root under either an in-repo (<repo>/.worktrees/<name>/) or sibling
+// (<repo>-worktrees/<name>/, worktrunk's default) worktree maps to the main root.
+var (
+	inRepoWorktreeRe  = regexp.MustCompile(`/\.worktrees/[^/]+/`)
+	siblingWorktreeRe = regexp.MustCompile(`([^/]+)-worktrees/[^/]+/`)
+)
+
+// canonicalizeRepoPrefix turns a repo root (possibly a worktree root) into the
+// canonical main-repo prefix that clusterSQL stores artifacts under, with a
+// trailing slash so it can't match a sibling repo ("/x/repo" vs "/x/repo-tools").
+func canonicalizeRepoPrefix(repoRoot string) string {
+	p := repoRoot
+	if !strings.HasSuffix(p, "/") {
+		p += "/"
+	}
+	p = inRepoWorktreeRe.ReplaceAllString(p, "/")
+	p = siblingWorktreeRe.ReplaceAllString(p, "$1/")
+	return p
+}
+
+// FilterByPrefix keeps clusters whose canonical artifact lives under repoRoot.
+// repoRoot == "" is a no-op (the wide default).
+func FilterByPrefix(clusters []Cluster, repoRoot string) []Cluster {
+	if repoRoot == "" {
+		return clusters
+	}
+	prefix := canonicalizeRepoPrefix(repoRoot)
+	out := make([]Cluster, 0, len(clusters))
+	for _, c := range clusters {
+		if strings.HasPrefix(c.Artifact, prefix) {
+			out = append(out, c)
+		}
+	}
+	return out
 }

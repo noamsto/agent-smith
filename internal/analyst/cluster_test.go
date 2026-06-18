@@ -497,3 +497,30 @@ func TestRankClusters(t *testing.T) {
 		t.Errorf("last_seen tiebreak: fresher cluster should lead, got %q first", tied[0].ClusterID)
 	}
 }
+
+func TestFilterByPrefix(t *testing.T) {
+	clusters := []Cluster{
+		{ClusterID: "1", Artifact: "/home/u/repo/CLAUDE.md"},
+		{ClusterID: "2", Artifact: "/home/u/other/CLAUDE.md"},
+		{ClusterID: "3", Artifact: "/home/u/repo-tools/CLAUDE.md"}, // sibling-name false-match guard
+	}
+	// Launched from the main checkout.
+	got := FilterByPrefix(clusters, "/home/u/repo")
+	if len(got) != 1 || got[0].ClusterID != "1" {
+		t.Fatalf("main checkout: got %+v, want only cluster 1 (no /repo-tools bleed)", got)
+	}
+	// Launched from an in-repo worktree → canonicalizes to the same main root.
+	got = FilterByPrefix(clusters, "/home/u/repo/.worktrees/feat-x")
+	if len(got) != 1 || got[0].ClusterID != "1" {
+		t.Errorf(".worktrees layout: got %+v, want cluster 1", got)
+	}
+	// Launched from a sibling worktree (worktrunk default) → same main root.
+	got = FilterByPrefix(clusters, "/home/u/repo-worktrees/feat-x")
+	if len(got) != 1 || got[0].ClusterID != "1" {
+		t.Errorf("sibling layout: got %+v, want cluster 1", got)
+	}
+	// Empty prefix is a no-op (wide default).
+	if len(FilterByPrefix(clusters, "")) != 3 {
+		t.Errorf("empty prefix should keep all")
+	}
+}
