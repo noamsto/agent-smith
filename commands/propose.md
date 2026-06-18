@@ -22,7 +22,7 @@ skill (Skill tool) first.
 
 1. Create a unique per-run input dir so concurrent runs and prior runs can't bleed:
    `RUNID="$(date +%Y%m%dT%H%M%S)-$$"; export PROPOSALS_DIR="/tmp/agent-smith-$RUNID"; mkdir -p "$PROPOSALS_DIR"`.
-   Use `$PROPOSALS_DIR` everywhere this skill previously used `$PROPOSALS_DIR`
+   Use `$PROPOSALS_DIR` everywhere this skill previously used `/tmp/agent-smith-proposals-in`
    (Oracle/Skeptic outputs `p-*.json` / `v-*.json`, and the `analyst assemble --proposals-dir "$PROPOSALS_DIR"` call).
 2. For each index entry in `clusters.json` (iterate with `jq -r '.[].file'`; each
    entry's `file` is the per-cluster JSON path relative to `clusters.json`'s dir):
@@ -52,7 +52,7 @@ skill (Skill tool) first.
 5. Report the assembled proposals (id, fix_type, confidence) AND the proposals the
    skeptic refuted (id + reason). This phase is review-only — no edits, no PRs.
 
-Finally, print the exact follow-up so `apply` targets this run's dir, not a stale one:
-`echo "next: /agent-smith:apply  (proposals dir: $PROPOSALS_DIR)"`. The apply phase
-defaults to the newest `/tmp/agent-smith-*` dir but pass this one explicitly when
-multiple runs overlap.
+Finally, print the exact pasteable follow-up so `apply` targets this run's dir, not a
+stale one: `echo "next: /agent-smith:apply $PROPOSALS_DIR"`. The apply phase defaults
+to the newest `/tmp/agent-smith-*` dir, but copy-pasting this invocation passes the
+dir explicitly — do that when multiple runs overlap.

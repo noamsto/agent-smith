@@ -20,13 +20,18 @@ also lets the binaries find `duckdb`). If bootstrap fails, stop and show its err
 Precondition: `proposals.json` exists in the cwd — if missing, run the
 **agent-smith:propose** skill (Skill tool) first.
 
-Resolve the proposals dir: if invoked with an explicit dir, use it; else pick the
-newest `/tmp/agent-smith-*` dir (`ls -dt /tmp/agent-smith-*/ | head -1`) and **warn
-if more than one exists in the last hour** (`find /tmp -maxdepth 1 -name 'agent-smith-*' -mmin -60`)
-so overlapping runs surface instead of silently crossing streams. Bind it as `$PROPOSALS_DIR`.
+Resolve the proposals dir: if `$ARGUMENTS` contains a token starting with
+`/tmp/agent-smith-`, bind `$PROPOSALS_DIR` to it (propose's handoff prints exactly
+this). Else pick the newest `/tmp/agent-smith-*` dir (`ls -dt /tmp/agent-smith-*/ | head -1`)
+and **warn if more than one exists in the last hour**
+(`find /tmp -maxdepth 1 -name 'agent-smith-*' -mmin -60`) so overlapping runs surface
+instead of silently crossing streams. Bind it as `$PROPOSALS_DIR`.
 
-`$ARGUMENTS` (optional) = a single proposal id; its **whole group** (every ready
-proposal on the same artifact) is applied, so the resulting PR stays conflict-free.
+`$ARGUMENTS` (optional) may carry a proposals-dir path and/or a proposal id,
+distinguished by shape: a token starting with `/tmp/agent-smith-` is the proposals
+dir (see below); any other token is a single proposal id, whose **whole group**
+(every ready proposal on the same artifact) is applied so the resulting PR stays
+conflict-free.
 
 The unit of work is a **group**: ready proposals sharing a `group_id` (same repo +
 artifact) land in one worktree, one branch, one PR. A lone proposal is a group of
@@ -74,7 +79,7 @@ one. This avoids the guaranteed conflict of N PRs all editing the same file.
         `agent-smith:editor` once more for the implicated proposal with the findings
         appended (one revision pass). Otherwise carry the notes forward (PR body).
    d. `applier submit --plan apply-plan.json --proposals proposals.json --group <gid>
-      --worktree "$WT" --editor-result-dir $PROPOSALS_DIR --reason-log-dir reason-log --draft`
+      --worktree "$WT" --editor-result-dir "$PROPOSALS_DIR" --reason-log-dir reason-log --draft`
       (always `--draft`). The PR enumerates every proposal in the group; each
       proposal's reason-log entry gets the shared PR link.
    e. If every editor declined (`applied:false`), the combined diff was empty, or any
