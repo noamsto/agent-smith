@@ -35,6 +35,8 @@ type Cluster struct {
 	ArtifactExists   bool            `json:"artifact_exists"`
 	DistinctSessions int             `json:"distinct_sessions"`
 	TotalIncidents   int             `json:"total_incidents"`
+	LastSeen         string          `json:"last_seen"`
+	RecentSessions   int             `json:"recent_sessions"`
 	Incidents        json.RawMessage `json:"incidents"` // JSON array of member incidents
 }
 
@@ -44,35 +46,49 @@ type clusterRow struct {
 	SignalType       string          `json:"signal_type"`
 	DistinctSessions int             `json:"distinct_sessions"`
 	TotalIncidents   int             `json:"total_incidents"`
+	LastSeen         string          `json:"last_seen"`
+	RecentSessions   int             `json:"recent_sessions"`
 	Incidents        json.RawMessage `json:"incidents"`
 }
 
 // clusterSQL explodes each incident across its candidate artifacts, groups by
-// (artifact, signal_type), keeps groups with >= minSessions distinct sessions,
-// and aggregates the member incidents into a JSON array per cluster.
-// Incidents are sampled using session-stratified round-robin up to maxIncidents;
-// maxIncidents <= 0 means uncapped.
-func clusterSQL(minSessions, maxIncidents int) string {
+// (artifact, signal_type), keeps groups with >= minSessions distinct sessions, and
+// aggregates the member incidents into a JSON array per cluster. It also computes
+// last_seen and recent_sessions: distinct sessions whose incident date falls within
+// the most recent staleDays *active* corpus days (dates with >=1 incident). All
+// recency comparisons are string ops on ISO-8601 ts (sortable as text).
+// Incidents are sampled session-stratified up to maxIncidents; maxIncidents <= 0 = uncapped.
+func clusterSQL(minSessions, maxIncidents, staleDays int) string {
 	capN := maxIncidents
 	if capN <= 0 {
 		capN = math.MaxInt32 // uncapped
 	}
 	return fmt.Sprintf(`
-WITH exploded AS (
+WITH active_days AS (
+  SELECT DISTINCT substr(ts, 1, 10) AS d FROM incidents
+),
+cutoff AS (
+  -- empty window (staleDays=0) or empty corpus → a sentinel above any real date, so nothing counts as recent
+  SELECT coalesce(min(d), '9999-12-31') AS live_cutoff FROM (SELECT d FROM active_days ORDER BY d DESC LIMIT %d)
+),
+exploded AS (
   SELECT incident_id, session_id, ts, confidence, detail, "window", signal_type,
-         -- canonicalize: a candidate under a git worktree (<repo>/.worktrees/<name>/…,
-         -- worktrunk's layout) maps back to the repo-root artifact, so worktree copies
-         -- cluster with the canonical file instead of fragmenting.
-         regexp_replace(unnest(CAST(candidates AS VARCHAR[])), '/\.worktrees/[^/]+/', '/') AS artifact
+         -- canonicalize worktree copies to the main repo root: in-repo
+         -- (<repo>/.worktrees/<name>/) then sibling (<repo>-worktrees/<name>/) layout.
+         regexp_replace(
+           regexp_replace(unnest(CAST(candidates AS VARCHAR[])), '/\.worktrees/[^/]+/', '/'),
+           '([^/]+)-worktrees/[^/]+/', '\1/') AS artifact
   FROM incidents
 ),
 gated AS (
-  SELECT artifact, signal_type,
-         count(DISTINCT session_id) AS distinct_sessions,
-         count(DISTINCT incident_id) AS total_incidents
-  FROM exploded
-  GROUP BY artifact, signal_type
-  HAVING count(DISTINCT session_id) >= %d
+  SELECT e.artifact, e.signal_type,
+         count(DISTINCT e.session_id) AS distinct_sessions,
+         count(DISTINCT e.incident_id) AS total_incidents,
+         max(e.ts) AS last_seen,
+         count(DISTINCT e.session_id) FILTER (WHERE substr(e.ts, 1, 10) >= c.live_cutoff) AS recent_sessions
+  FROM exploded e CROSS JOIN cutoff c
+  GROUP BY e.artifact, e.signal_type
+  HAVING count(DISTINCT e.session_id) >= %d
 ),
 ranked AS (
   SELECT e.*,
@@ -98,6 +114,8 @@ SELECT s.artifact,
        s.signal_type,
        g.distinct_sessions,
        g.total_incidents,
+       g.last_seen,
+       g.recent_sessions,
        to_json(list(struct_pack(
          incident_id := s.incident_id, session_id := s.session_id, ts := s.ts,
          confidence := s.confidence, detail := s.detail, "window" := s."window")
@@ -105,13 +123,14 @@ SELECT s.artifact,
 FROM sampled s
 JOIN gated g USING (artifact, signal_type)
 WHERE s.pick <= %d
-GROUP BY s.artifact, s.signal_type, g.distinct_sessions, g.total_incidents
-ORDER BY g.distinct_sessions DESC, s.artifact, s.signal_type;`, minSessions, capN)
+GROUP BY s.artifact, s.signal_type, g.distinct_sessions, g.total_incidents, g.last_seen, g.recent_sessions
+ORDER BY g.recent_sessions DESC, g.distinct_sessions DESC, s.artifact, s.signal_type;`,
+		staleDays, minSessions, capN)
 }
 
 // clusterRows runs the clustering query against db and returns the raw rows.
-func clusterRows(ctx context.Context, db string, minSessions, maxIncidents int) ([]clusterRow, error) {
-	out, err := queryJSON(ctx, db, clusterSQL(minSessions, maxIncidents))
+func clusterRows(ctx context.Context, db string, minSessions, maxIncidents, staleDays int) ([]clusterRow, error) {
+	out, err := queryJSON(ctx, db, clusterSQL(minSessions, maxIncidents, staleDays))
 	if err != nil {
 		return nil, err
 	}
@@ -129,8 +148,8 @@ func clusterRows(ctx context.Context, db string, minSessions, maxIncidents int) 
 // roots), then reads each artifact's current content from disk. Clusters whose
 // canonical artifact no longer exists — a deleted worktree, a removed file — are
 // dropped; dropped is how many were dropped, for the caller to surface.
-func ClusterDB(ctx context.Context, db string, minSessions, maxIncidents int) (clusters []Cluster, dropped int, err error) {
-	rows, err := clusterRows(ctx, db, minSessions, maxIncidents)
+func ClusterDB(ctx context.Context, db string, minSessions, maxIncidents, staleDays int) (clusters []Cluster, dropped int, err error) {
+	rows, err := clusterRows(ctx, db, minSessions, maxIncidents, staleDays)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -153,6 +172,8 @@ func ClusterDB(ctx context.Context, db string, minSessions, maxIncidents int) (c
 			ArtifactExists:   true,
 			DistinctSessions: r.DistinctSessions,
 			TotalIncidents:   r.TotalIncidents,
+			LastSeen:         r.LastSeen,
+			RecentSessions:   r.RecentSessions,
 			Incidents:        capWindows(r.Incidents),
 		})
 	}
