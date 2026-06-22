@@ -41,7 +41,7 @@ func TestClusterExplodesAndGates(t *testing.T) {
 	   '["/g/CLAUDE.md"]'::JSON,'[]'::JSON,'medium','{}'::JSON);`
 	db := makeIncidentsDB(t, ins)
 
-	rows, err := clusterRows(context.Background(), db, 3, 0)
+	rows, err := clusterRows(context.Background(), db, 3, 0, 3650)
 	if err != nil {
 		t.Fatalf("clusterRows: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestClusterDBBundlesArtifactContent(t *testing.T) {
 	   '["` + artifact + `","` + missing + `"]'::JSON,'[]'::JSON,'high','{}'::JSON);`
 	db := makeIncidentsDB(t, ins)
 
-	clusters, dropped, err := ClusterDB(context.Background(), db, 3, 0)
+	clusters, dropped, err := ClusterDB(context.Background(), db, 3, 0, 3650)
 	if err != nil {
 		t.Fatalf("ClusterDB: %v", err)
 	}
@@ -147,7 +147,7 @@ func TestClusterCanonicalizesWorktreePaths(t *testing.T) {
 	   '["` + goneWt + `"]'::JSON,'[]'::JSON,'high','{}'::JSON);`
 	db := makeIncidentsDB(t, ins)
 
-	clusters, dropped, err := ClusterDB(context.Background(), db, 3, 0)
+	clusters, dropped, err := ClusterDB(context.Background(), db, 3, 0, 3650)
 	if err != nil {
 		t.Fatalf("ClusterDB: %v", err)
 	}
@@ -185,7 +185,7 @@ func TestClusterDBCapsBloat(t *testing.T) {
 	   '["` + artifact + `"]'::JSON,'` + win + `'::JSON,'high','{}'::JSON);`
 	db := makeIncidentsDB(t, ins)
 
-	clusters, _, err := ClusterDB(context.Background(), db, 3, 0)
+	clusters, _, err := ClusterDB(context.Background(), db, 3, 0, 3650)
 	if err != nil {
 		t.Fatalf("ClusterDB: %v", err)
 	}
@@ -289,7 +289,7 @@ func TestClusterSamplesStratifiedBySession(t *testing.T) {
 	FROM range(1,6) AS t1(s), range(0,3) AS t2(i);`
 	db := makeIncidentsDB(t, ins)
 
-	rows, err := clusterRows(context.Background(), db, 3, 5)
+	rows, err := clusterRows(context.Background(), db, 3, 5, 3650)
 	if err != nil {
 		t.Fatalf("clusterRows: %v", err)
 	}
@@ -342,7 +342,7 @@ func TestClusterSamplingRoundRobinDeepens(t *testing.T) {
 	FROM range(1,6) AS t1(s), range(0,3) AS t2(i);`
 	db := makeIncidentsDB(t, ins)
 
-	rows, err := clusterRows(context.Background(), db, 3, 7)
+	rows, err := clusterRows(context.Background(), db, 3, 7, 3650)
 	if err != nil {
 		t.Fatalf("clusterRows: %v", err)
 	}
@@ -381,7 +381,7 @@ func TestClusterUncappedKeepsAllIncidents(t *testing.T) {
 	FROM range(1,4) AS t1(s), range(0,2) AS t2(i);`
 	db := makeIncidentsDB(t, ins)
 
-	rows, err := clusterRows(context.Background(), db, 3, 0)
+	rows, err := clusterRows(context.Background(), db, 3, 0, 3650)
 	if err != nil {
 		t.Fatalf("clusterRows: %v", err)
 	}
@@ -400,41 +400,131 @@ func TestClusterUncappedKeepsAllIncidents(t *testing.T) {
 	}
 }
 
-func TestTopClustersRanksAndTruncates(t *testing.T) {
-	clusters := []Cluster{
-		{ClusterID: "a", DistinctSessions: 4, TotalIncidents: 10},
-		{ClusterID: "b", DistinctSessions: 9, TotalIncidents: 12},
-		{ClusterID: "c", DistinctSessions: 9, TotalIncidents: 30}, // ties b on sessions, wins on incidents
-		{ClusterID: "d", DistinctSessions: 6, TotalIncidents: 50},
-		{ClusterID: "e", DistinctSessions: 4, TotalIncidents: 99},
+
+func TestClusterRecencyColumns(t *testing.T) {
+	// Corpus newest active day = 2026-06-20. With staleDays=3 the live window's 3
+	// active days are 06-20/06-19/06-18, so live_cutoff = 2026-06-18 (left edge
+	// inclusive). Cluster X has a 4th session on 06-17 — one active day before the
+	// cutoff — which must NOT count as recent, proving the left edge is exclusive of
+	// 06-17 yet inclusive of 06-18 (a '>' typo would drop 06-18 and yield 2).
+	// Cluster Y: 3 sessions, all in May (before the window) → recent_sessions=0.
+	ins := `INSERT INTO incidents VALUES
+	 (md5('x0'),'sx0','/p','2026-06-17T23:59:59Z','retry','/g/X.md','["/g/X.md"]'::JSON,'[]'::JSON,'high','{}'::JSON),
+	 (md5('x1'),'sx1','/p','2026-06-18T10:00:00Z','retry','/g/X.md','["/g/X.md"]'::JSON,'[]'::JSON,'high','{}'::JSON),
+	 (md5('x2'),'sx2','/p','2026-06-19T10:00:00Z','retry','/g/X.md','["/g/X.md"]'::JSON,'[]'::JSON,'high','{}'::JSON),
+	 (md5('x3'),'sx3','/p','2026-06-20T10:00:00Z','retry','/g/X.md','["/g/X.md"]'::JSON,'[]'::JSON,'high','{}'::JSON),
+	 (md5('y1'),'sy1','/p','2026-05-01T10:00:00Z','retry','/g/Y.md','["/g/Y.md"]'::JSON,'[]'::JSON,'high','{}'::JSON),
+	 (md5('y2'),'sy2','/p','2026-05-02T10:00:00Z','retry','/g/Y.md','["/g/Y.md"]'::JSON,'[]'::JSON,'high','{}'::JSON),
+	 (md5('y3'),'sy3','/p','2026-05-03T10:00:00Z','retry','/g/Y.md','["/g/Y.md"]'::JSON,'[]'::JSON,'high','{}'::JSON);`
+	db := makeIncidentsDB(t, ins)
+
+	rows, err := clusterRows(context.Background(), db, 3, 0, 3)
+	if err != nil {
+		t.Fatalf("clusterRows: %v", err)
 	}
-	kept, dropped := TopClusters(clusters, 3)
-	if dropped != 2 {
-		t.Fatalf("dropped = %d, want 2", dropped)
+	got := map[string]clusterRow{}
+	for _, r := range rows {
+		got[r.Artifact] = r
 	}
-	gotIDs := []string{kept[0].ClusterID, kept[1].ClusterID, kept[2].ClusterID}
-	want := []string{"c", "b", "d"}
-	for i := range want {
-		if gotIDs[i] != want[i] {
-			t.Fatalf("ranking = %v, want %v", gotIDs, want)
+	// 4 X sessions span 06-17..06-20, but only the 3 in-window (06-18+) are recent.
+	if got["/g/X.md"].RecentSessions != 3 {
+		t.Errorf("X recent_sessions = %d, want 3 (06-17 excluded, 06-18 included)", got["/g/X.md"].RecentSessions)
+	}
+	if got["/g/Y.md"].RecentSessions != 0 {
+		t.Errorf("Y recent_sessions = %d, want 0", got["/g/Y.md"].RecentSessions)
+	}
+	if got["/g/X.md"].LastSeen != "2026-06-20T10:00:00Z" {
+		t.Errorf("X last_seen = %q, want 2026-06-20T10:00:00Z", got["/g/X.md"].LastSeen)
+	}
+
+	// Degenerate window (staleDays=0): no active days are live, so the cutoff sentinel
+	// sits above every real date and nothing counts as recent — everything is backlog.
+	zero, err := clusterRows(context.Background(), db, 3, 0, 0)
+	if err != nil {
+		t.Fatalf("clusterRows(staleDays=0): %v", err)
+	}
+	for _, r := range zero {
+		if r.RecentSessions != 0 {
+			t.Errorf("%s recent_sessions = %d with staleDays=0, want 0", r.Artifact, r.RecentSessions)
 		}
-	}
-	// Cutoff (last kept) is what the CLI logs alongside the drop count.
-	cutoff := kept[len(kept)-1]
-	if cutoff.DistinctSessions != 6 || cutoff.TotalIncidents != 50 {
-		t.Errorf("cutoff = %d sessions / %d incidents, want 6 / 50", cutoff.DistinctSessions, cutoff.TotalIncidents)
 	}
 }
 
-func TestTopClustersKeepsAllWhenUnsetOrUnderCap(t *testing.T) {
-	clusters := []Cluster{
-		{ClusterID: "a", DistinctSessions: 9},
-		{ClusterID: "b", DistinctSessions: 4},
+func TestRankClusters(t *testing.T) {
+	zombie := Cluster{ClusterID: "z", DistinctSessions: 80, RecentSessions: 1, LastSeen: "2026-06-20T00:00:00Z"}
+	active := Cluster{ClusterID: "a", DistinctSessions: 6, RecentSessions: 6, LastSeen: "2026-06-20T00:00:00Z"}
+	backlog := Cluster{ClusterID: "b", DistinctSessions: 50, RecentSessions: 0, LastSeen: "2026-05-01T00:00:00Z"}
+
+	fleet, droppedBacklog, droppedTop := RankClusters([]Cluster{zombie, active, backlog}, 8, false)
+	if len(fleet) != 2 {
+		t.Fatalf("fleet = %d clusters, want 2 (backlog excluded)", len(fleet))
 	}
-	for _, n := range []int{0, -1, 2, 5} {
-		kept, dropped := TopClusters(clusters, n)
-		if dropped != 0 || len(kept) != len(clusters) {
-			t.Errorf("n=%d: kept %d, dropped %d; want all kept, 0 dropped", n, len(kept), dropped)
+	if fleet[0].ClusterID != "a" {
+		t.Errorf("active (6 recent) should outrank zombie (1 recent); got %q first", fleet[0].ClusterID)
+	}
+	if droppedBacklog != 1 || droppedTop != 0 {
+		t.Errorf("droppedBacklog=%d droppedTop=%d, want 1/0", droppedBacklog, droppedTop)
+	}
+
+	// n <= 0 keeps every selected (live) cluster — the uncapped invariant.
+	for _, n := range []int{0, -1} {
+		keepAll, db, dt := RankClusters([]Cluster{zombie, active, backlog}, n, false)
+		if len(keepAll) != 2 || db != 1 || dt != 0 {
+			t.Errorf("n=%d: len=%d droppedBacklog=%d droppedTop=%d, want 2/1/0", n, len(keepAll), db, dt)
 		}
+	}
+
+	// includeStale ranks all by lifetime breadth — backlog re-enters, ranked by distinct_sessions.
+	all, db2, dt2 := RankClusters([]Cluster{zombie, active, backlog}, 8, true)
+	if len(all) != 3 || db2 != 0 || dt2 != 0 {
+		t.Fatalf("includeStale: len=%d droppedBacklog=%d droppedTop=%d, want 3/0/0", len(all), db2, dt2)
+	}
+	if all[0].ClusterID != "z" || all[1].ClusterID != "b" || all[2].ClusterID != "a" {
+		t.Errorf("backlog mode ranks by lifetime (80/50/6): want z,b,a; got %q,%q,%q", all[0].ClusterID, all[1].ClusterID, all[2].ClusterID)
+	}
+
+	// the cap drops lowest-ranked live clusters and reports the count.
+	capped, _, dt3 := RankClusters([]Cluster{zombie, active}, 1, false)
+	if len(capped) != 1 || dt3 != 1 || capped[0].ClusterID != "a" {
+		t.Errorf("cap: len=%d droppedTop=%d first=%q, want 1/1/a", len(capped), dt3, capped[0].ClusterID)
+	}
+
+	// tie on recent + lifetime falls back to last_seen (descending), so the fresher one leads.
+	older := Cluster{ClusterID: "old", DistinctSessions: 5, RecentSessions: 5, LastSeen: "2026-06-01T00:00:00Z"}
+	newer := Cluster{ClusterID: "new", DistinctSessions: 5, RecentSessions: 5, LastSeen: "2026-06-15T00:00:00Z"}
+	tied, _, _ := RankClusters([]Cluster{older, newer}, 8, false)
+	if tied[0].ClusterID != "new" {
+		t.Errorf("last_seen tiebreak: fresher cluster should lead, got %q first", tied[0].ClusterID)
+	}
+}
+
+func TestFilterByPrefix(t *testing.T) {
+	clusters := []Cluster{
+		{ClusterID: "1", Artifact: "/home/u/repo/CLAUDE.md"},
+		{ClusterID: "2", Artifact: "/home/u/other/CLAUDE.md"},
+		{ClusterID: "3", Artifact: "/home/u/repo-tools/CLAUDE.md"}, // sibling-name false-match guard
+	}
+	// Launched from the main checkout.
+	got := FilterByPrefix(clusters, "/home/u/repo")
+	if len(got) != 1 || got[0].ClusterID != "1" {
+		t.Fatalf("main checkout: got %+v, want only cluster 1 (no /repo-tools bleed)", got)
+	}
+	// Launched from an in-repo worktree → canonicalizes to the same main root.
+	got = FilterByPrefix(clusters, "/home/u/repo/.worktrees/feat-x")
+	if len(got) != 1 || got[0].ClusterID != "1" {
+		t.Errorf(".worktrees layout: got %+v, want cluster 1", got)
+	}
+	// Launched from a sibling worktree (worktrunk default) → same main root.
+	got = FilterByPrefix(clusters, "/home/u/repo-worktrees/feat-x")
+	if len(got) != 1 || got[0].ClusterID != "1" {
+		t.Errorf("sibling layout: got %+v, want cluster 1", got)
+	}
+	// Already-trailing-slash prefix must not double-append the separator.
+	if got := FilterByPrefix(clusters, "/home/u/repo/"); len(got) != 1 || got[0].ClusterID != "1" {
+		t.Errorf("trailing-slash prefix: got %+v, want cluster 1", got)
+	}
+	// Empty prefix is a no-op (wide default).
+	if len(FilterByPrefix(clusters, "")) != 3 {
+		t.Errorf("empty prefix should keep all")
 	}
 }

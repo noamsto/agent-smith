@@ -1,6 +1,7 @@
 package applier
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -125,10 +126,9 @@ func TestDedupOpenPR(t *testing.T) {
 	}
 	branch := base[0].BranchName
 
-	listPRs := func() ([]PullRequest, error) {
+	plan, err := Prepare(pf, "", DedupConfig{OpenPRsForRepo: func(_ string) ([]PullRequest, error) {
 		return []PullRequest{{Number: 12, Title: "t", HeadRefName: branch, URL: "https://github.com/noamsto/nix-config/pull/12"}}, nil
-	}
-	plan, err := Prepare(pf, "", DedupConfig{ListOpenPRs: listPRs}, false)
+	}}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,10 +159,12 @@ func TestDedupDistinctNotDeduped(t *testing.T) {
 	   "evidence":["s1:1"],"diagnosis":"d","proposed_change":"c","confidence":"high","reason_log":"r"}
 	]`)
 
-	listPRs := func() ([]PullRequest, error) {
-		return []PullRequest{{Number: 99, HeadRefName: "docs/agent-smith-unrelated", URL: "u"}}, nil
-	}
-	plan, err := Prepare(pf, "", DedupConfig{ListOpenPRs: listPRs, ReasonLogDir: rl}, false)
+	plan, err := Prepare(pf, "", DedupConfig{
+		OpenPRsForRepo: func(_ string) ([]PullRequest, error) {
+			return []PullRequest{{Number: 99, HeadRefName: "docs/agent-smith-unrelated", URL: "u"}}, nil
+		},
+		ReasonLogDir: rl,
+	}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,5 +174,94 @@ func TestDedupDistinctNotDeduped(t *testing.T) {
 	}
 	if got["p-no-prior"].Status != StatusReady {
 		t.Errorf("different artifact: status = %q, want ready", got["p-no-prior"].Status)
+	}
+}
+
+func TestPreparePerRepoDedup(t *testing.T) {
+	repoA := initRepo(t, "https://github.com/noamsto/app-a.git")
+	repoB := initRepo(t, "https://github.com/noamsto/app-b.git")
+	fileA := filepath.Join(repoA, "CLAUDE.md")
+	fileB := filepath.Join(repoB, "CLAUDE.md")
+	proposals := `[
+	  {"id":"p-a","implicated_artifact":"` + fileA + `#x","fix_type":"strengthen",
+	   "evidence":["s1:1"],"diagnosis":"d","proposed_change":"c","confidence":"high","reason_log":"r"},
+	  {"id":"p-b","implicated_artifact":"` + fileB + `#x","fix_type":"strengthen",
+	   "evidence":["s1:1"],"diagnosis":"d","proposed_change":"c","confidence":"high","reason_log":"r"}
+	]`
+	pf := filepath.Join(t.TempDir(), "proposals.json")
+	if err := os.WriteFile(pf, []byte(proposals), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Learn each entry's artifact-derived branch name with dedup off.
+	base, err := Prepare(pf, "", DedupConfig{}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// branchByRepo and rootByID key on the resolved RepoRoot the closure receives,
+	// which may differ from the raw initRepo path (symlink canonicalization).
+	branchByRepo := map[string]string{}
+	rootByID := map[string]string{}
+	for _, e := range base {
+		branchByRepo[e.RepoRoot] = e.BranchName
+		rootByID[e.ProposalID] = e.RepoRoot
+	}
+
+	// Each repo reports an open PR on its OWN proposal's branch.
+	cfg := DedupConfig{OpenPRsForRepo: func(root string) ([]PullRequest, error) {
+		return []PullRequest{{Number: 1, HeadRefName: branchByRepo[root], URL: "u/" + root}}, nil
+	}}
+	plan, err := Prepare(pf, "", cfg, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range plan {
+		if e.Status != StatusDuplicate {
+			t.Errorf("%s: status %q, want duplicate (its own target repo has the open PR)", e.ProposalID, e.Status)
+		}
+	}
+
+	// Isolation: only repo A has an open PR. A bug that reused A's PR list for every
+	// proposal would mark p-b duplicate too; per-repo dedup leaves p-b ready.
+	rootA := rootByID["p-a"]
+	cfg2 := DedupConfig{OpenPRsForRepo: func(root string) ([]PullRequest, error) {
+		if root == rootA {
+			return []PullRequest{{Number: 1, HeadRefName: branchByRepo[rootA], URL: "u"}}, nil
+		}
+		return nil, nil // repo B has no open PRs
+	}}
+	plan2, err := Prepare(pf, "", cfg2, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := statusByID(plan2)
+	if got["p-a"].Status != StatusDuplicate {
+		t.Errorf("p-a: status %q, want duplicate (repo A has the open PR)", got["p-a"].Status)
+	}
+	if got["p-b"].Status != StatusReady {
+		t.Errorf("p-b: status %q, want ready (repo B has no open PR — A's list must not leak)", got["p-b"].Status)
+	}
+}
+
+func TestPrepareDedupFailsOpen(t *testing.T) {
+	repo := initRepo(t, "https://github.com/noamsto/app-a.git")
+	file := filepath.Join(repo, "CLAUDE.md")
+	proposals := `[
+	  {"id":"p-a","implicated_artifact":"` + file + `#x","fix_type":"strengthen",
+	   "evidence":["s1:1"],"diagnosis":"d","proposed_change":"c","confidence":"high","reason_log":"r"}
+	]`
+	pf := filepath.Join(t.TempDir(), "proposals.json")
+	if err := os.WriteFile(pf, []byte(proposals), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := DedupConfig{OpenPRsForRepo: func(root string) ([]PullRequest, error) {
+		return nil, fmt.Errorf("no gh remote")
+	}}
+	plan, err := Prepare(pf, "", cfg, false)
+	if err != nil {
+		t.Fatalf("dedup must fail open, not error: %v", err)
+	}
+	if plan[0].Status != StatusReady {
+		t.Errorf("status = %q, want ready (a repo we can't query never blocks)", plan[0].Status)
 	}
 }

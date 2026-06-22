@@ -37,16 +37,26 @@ func runCluster(args []string) {
 	reasonLog := fs.String("reason-log-dir", "reason-log", "reason-log directory consulted to skip closed/rejected clusters")
 	minSessions := fs.Int("min-sessions", 5, "minimum distinct sessions for an actionable cluster")
 	maxIncidents := fs.Int("max-incidents-per-cluster", 50, "cap incidents per cluster fed to the Oracle (session-stratified sample); 0 = uncapped")
-	top := fs.Int("top", 0, "keep only the top N clusters by signal strength (distinct_sessions, then total_incidents); 0 = keep all")
+	top := fs.Int("top", 0, "keep only the top N clusters by signal strength (recent_sessions, then distinct_sessions); 0 = keep all")
+	staleDays := fs.Int("stale-after-days", 14, "a cluster is backlog if it has no incidents in the most recent N active corpus days")
+	includeStale := fs.Bool("include-stale", false, "rank the historical backlog by lifetime signal instead of excluding it from the fleet")
+	artifactPrefix := fs.String("artifact-prefix", "", "keep only clusters whose canonical artifact lives under this repo root (worktree roots canonicalized)")
 	_ = fs.Parse(args)
 
-	clusters, dropped, err := analyst.ClusterDB(context.Background(), *db, *minSessions, *maxIncidents)
+	clusters, dropped, err := analyst.ClusterDB(context.Background(), *db, *minSessions, *maxIncidents, *staleDays)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "analyst cluster:", err)
 		os.Exit(1)
 	}
 	if dropped > 0 {
 		fmt.Fprintf(os.Stderr, "dropped %d cluster(s) whose canonical artifact no longer exists\n", dropped)
+	}
+	if *artifactPrefix != "" {
+		before := len(clusters)
+		clusters = analyst.FilterByPrefix(clusters, *artifactPrefix)
+		if d := before - len(clusters); d > 0 {
+			fmt.Fprintf(os.Stderr, "--artifact-prefix: kept %d, dropped %d cluster(s) outside %s\n", len(clusters), d, *artifactPrefix)
+		}
 	}
 	entries, err := analyst.ReadEntries(*reasonLog)
 	if err != nil {
@@ -57,12 +67,16 @@ func runCluster(args []string) {
 	for _, c := range skipped {
 		fmt.Fprintf(os.Stderr, "skip %s: a prior proposal was closed/rejected (reason-log)\n", c.ClusterID)
 	}
-	clusters, topDropped := analyst.TopClusters(clusters, *top)
-	if topDropped > 0 {
-		cutoff := clusters[len(clusters)-1]
-		fmt.Fprintf(os.Stderr, "--top %d: dropped %d lower-signal clusters; cutoff at %d distinct sessions / %d incidents\n",
-			*top, topDropped, cutoff.DistinctSessions, cutoff.TotalIncidents)
+	fleet, droppedBacklog, droppedTop := analyst.RankClusters(clusters, *top, *includeStale)
+	if droppedBacklog > 0 {
+		fmt.Fprintf(os.Stderr, "recency: %d backlog cluster(s) excluded — no incidents in the last %d active days; --include-stale to rank them\n", droppedBacklog, *staleDays)
 	}
+	if droppedTop > 0 {
+		cutoff := fleet[len(fleet)-1]
+		fmt.Fprintf(os.Stderr, "--top %d: dropped %d lower-signal cluster(s); cutoff at %d recent / %d lifetime sessions\n",
+			*top, droppedTop, cutoff.RecentSessions, cutoff.DistinctSessions)
+	}
+	clusters = fleet
 	if err := analyst.WriteClusters(clusters, *out); err != nil {
 		fmt.Fprintln(os.Stderr, "analyst cluster:", err)
 		os.Exit(1)

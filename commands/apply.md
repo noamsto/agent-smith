@@ -20,14 +20,24 @@ also lets the binaries find `duckdb`). If bootstrap fails, stop and show its err
 Precondition: `proposals.json` exists in the cwd — if missing, run the
 **agent-smith:propose** skill (Skill tool) first.
 
-`$ARGUMENTS` (optional) = a single proposal id; its **whole group** (every ready
-proposal on the same artifact) is applied, so the resulting PR stays conflict-free.
+Resolve the proposals dir: if `$ARGUMENTS` contains a token starting with
+`/tmp/agent-smith-`, bind `$PROPOSALS_DIR` to it (propose's handoff prints exactly
+this). Else pick the newest `/tmp/agent-smith-*` dir (`ls -dt /tmp/agent-smith-*/ | head -1`)
+and **warn if more than one exists in the last hour**
+(`find /tmp -maxdepth 1 -name 'agent-smith-*' -mmin -60`) so overlapping runs surface
+instead of silently crossing streams. Bind it as `$PROPOSALS_DIR`.
+
+`$ARGUMENTS` (optional) may carry a proposals-dir path and/or a proposal id,
+distinguished by shape: a token starting with `/tmp/agent-smith-` is the proposals
+dir (see below); any other token is a single proposal id, whose **whole group**
+(every ready proposal on the same artifact) is applied so the resulting PR stays
+conflict-free.
 
 The unit of work is a **group**: ready proposals sharing a `group_id` (same repo +
 artifact) land in one worktree, one branch, one PR. A lone proposal is a group of
 one. This avoids the guaranteed conflict of N PRs all editing the same file.
 
-1. `applier prepare --proposals proposals.json --out apply-plan.json --settings-repo "$AGENT_SMITH_SETTINGS_REPO" --reason-log-dir reason-log --repo .`
+1. `applier prepare --proposals proposals.json --out apply-plan.json --settings-repo "$AGENT_SMITH_SETTINGS_REPO" --reason-log-dir reason-log`
    — `--settings-repo` routes `escalate-out-of-instructions` proposals to the repo
    owning the Claude Code settings layers; without it they are `skip-unrouted`. This
    also runs the **pending-work dedup gate**: a proposal whose artifact+behavior
@@ -50,7 +60,7 @@ one. This avoids the guaranteed conflict of N PRs all editing the same file.
       a temp file and dispatch the **agent-smith:editor** subagent (Agent tool) with
       the proposal temp-file path, `file=$FILE`, `repo_root=$WT`, and the instruction
       to follow its own contract: write its result JSON to
-      `/tmp/agent-smith-proposals-in/editor-result-<id>.json` (this path is the
+      `$PROPOSALS_DIR/editor-result-<id>.json` (this path is the
       editor's output sink — writing it is not an artifact edit, so it is fine that
       it lives outside the worktree) and return only its one-line final message, not
       the JSON. Do NOT dispatch the group's editors in parallel.
@@ -69,7 +79,7 @@ one. This avoids the guaranteed conflict of N PRs all editing the same file.
         `agent-smith:editor` once more for the implicated proposal with the findings
         appended (one revision pass). Otherwise carry the notes forward (PR body).
    d. `applier submit --plan apply-plan.json --proposals proposals.json --group <gid>
-      --worktree "$WT" --editor-result-dir /tmp/agent-smith-proposals-in --reason-log-dir reason-log --draft`
+      --worktree "$WT" --editor-result-dir "$PROPOSALS_DIR" --reason-log-dir reason-log --draft`
       (always `--draft`). The PR enumerates every proposal in the group; each
       proposal's reason-log entry gets the shared PR link.
    e. If every editor declined (`applied:false`), the combined diff was empty, or any
@@ -79,3 +89,6 @@ one. This avoids the guaranteed conflict of N PRs all editing the same file.
    (`git add reason-log/ && git commit -m "docs(reason-log): link agent-smith PRs"`).
 5. Report per group: `group_id | repo | proposal ids | verify verdict | PR link or skip reason`.
    All PRs are **drafts** — tell the user to review / `nix build` / merge them at their leisure.
+
+On success, remove this run's dir: `rm -rf "$PROPOSALS_DIR"`. Also sweep crashed runs:
+`find /tmp -maxdepth 1 -name 'agent-smith-*' -mmin +1440 -exec rm -rf {} +`.

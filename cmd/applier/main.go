@@ -49,7 +49,6 @@ func runPrepare(args []string) {
 	settingsRepo := fs.String("settings-repo", os.Getenv("AGENT_SMITH_SETTINGS_REPO"),
 		"repo root owning the Claude Code settings layers; escalations route here (default $AGENT_SMITH_SETTINGS_REPO)")
 	reasonLog := fs.String("reason-log-dir", "reason-log", "reason-log directory consulted for prior pending work")
-	repo := fs.String("repo", ".", "agent-smith repo root whose open PRs are checked for duplicates")
 	noDedup := fs.Bool("no-dedup", false, "skip the pending-work dedup gate (open PRs + reason-log history)")
 	includeLow := fs.Bool("include-low-confidence", false, "keep confidence:low proposals (dropped by default)")
 	_ = fs.Parse(args)
@@ -57,7 +56,16 @@ func runPrepare(args []string) {
 	cfg := applier.DedupConfig{}
 	if !*noDedup {
 		cfg = applier.DedupConfig{
-			ListOpenPRs:  applier.GhOpenPRs(applier.Run, *repo),
+			// Fail open at the CLI boundary so the operator sees a warning naming the
+			// repo; Prepare also fails open on a non-nil error as defense in depth.
+			OpenPRsForRepo: func(root string) ([]applier.PullRequest, error) {
+				prs, err := applier.GhOpenPRs(applier.Run, root)()
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "warning: open-PR dedup skipped for %s: %v\n", root, err)
+					return nil, nil
+				}
+				return prs, nil
+			},
 			ReasonLogDir: *reasonLog,
 		}
 	}

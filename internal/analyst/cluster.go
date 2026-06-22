@@ -8,7 +8,9 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strings"
 )
 
 // Size caps keep a single pretty-printed cluster file comfortably under the
@@ -35,6 +37,8 @@ type Cluster struct {
 	ArtifactExists   bool            `json:"artifact_exists"`
 	DistinctSessions int             `json:"distinct_sessions"`
 	TotalIncidents   int             `json:"total_incidents"`
+	LastSeen         string          `json:"last_seen"`
+	RecentSessions   int             `json:"recent_sessions"`
 	Incidents        json.RawMessage `json:"incidents"` // JSON array of member incidents
 }
 
@@ -44,35 +48,49 @@ type clusterRow struct {
 	SignalType       string          `json:"signal_type"`
 	DistinctSessions int             `json:"distinct_sessions"`
 	TotalIncidents   int             `json:"total_incidents"`
+	LastSeen         string          `json:"last_seen"`
+	RecentSessions   int             `json:"recent_sessions"`
 	Incidents        json.RawMessage `json:"incidents"`
 }
 
 // clusterSQL explodes each incident across its candidate artifacts, groups by
-// (artifact, signal_type), keeps groups with >= minSessions distinct sessions,
-// and aggregates the member incidents into a JSON array per cluster.
-// Incidents are sampled using session-stratified round-robin up to maxIncidents;
-// maxIncidents <= 0 means uncapped.
-func clusterSQL(minSessions, maxIncidents int) string {
+// (artifact, signal_type), keeps groups with >= minSessions distinct sessions, and
+// aggregates the member incidents into a JSON array per cluster. It also computes
+// last_seen and recent_sessions: distinct sessions whose incident date falls within
+// the most recent staleDays *active* corpus days (dates with >=1 incident). All
+// recency comparisons are string ops on ISO-8601 ts (sortable as text).
+// Incidents are sampled session-stratified up to maxIncidents; maxIncidents <= 0 = uncapped.
+func clusterSQL(minSessions, maxIncidents, staleDays int) string {
 	capN := maxIncidents
 	if capN <= 0 {
 		capN = math.MaxInt32 // uncapped
 	}
 	return fmt.Sprintf(`
-WITH exploded AS (
+WITH active_days AS (
+  SELECT DISTINCT substr(ts, 1, 10) AS d FROM incidents
+),
+cutoff AS (
+  -- empty window (staleDays=0) or empty corpus → a sentinel above any real date, so nothing counts as recent
+  SELECT coalesce(min(d), '9999-12-31') AS live_cutoff FROM (SELECT d FROM active_days ORDER BY d DESC LIMIT %d)
+),
+exploded AS (
   SELECT incident_id, session_id, ts, confidence, detail, "window", signal_type,
-         -- canonicalize: a candidate under a git worktree (<repo>/.worktrees/<name>/…,
-         -- worktrunk's layout) maps back to the repo-root artifact, so worktree copies
-         -- cluster with the canonical file instead of fragmenting.
-         regexp_replace(unnest(CAST(candidates AS VARCHAR[])), '/\.worktrees/[^/]+/', '/') AS artifact
+         -- canonicalize worktree copies to the main repo root: in-repo
+         -- (<repo>/.worktrees/<name>/) then sibling (<repo>-worktrees/<name>/) layout.
+         regexp_replace(
+           regexp_replace(unnest(CAST(candidates AS VARCHAR[])), '/\.worktrees/[^/]+/', '/'),
+           '([^/]+)-worktrees/[^/]+/', '\1/') AS artifact
   FROM incidents
 ),
 gated AS (
-  SELECT artifact, signal_type,
-         count(DISTINCT session_id) AS distinct_sessions,
-         count(DISTINCT incident_id) AS total_incidents
-  FROM exploded
-  GROUP BY artifact, signal_type
-  HAVING count(DISTINCT session_id) >= %d
+  SELECT e.artifact, e.signal_type,
+         count(DISTINCT e.session_id) AS distinct_sessions,
+         count(DISTINCT e.incident_id) AS total_incidents,
+         max(e.ts) AS last_seen,
+         count(DISTINCT e.session_id) FILTER (WHERE substr(e.ts, 1, 10) >= c.live_cutoff) AS recent_sessions
+  FROM exploded e CROSS JOIN cutoff c
+  GROUP BY e.artifact, e.signal_type
+  HAVING count(DISTINCT e.session_id) >= %d
 ),
 ranked AS (
   SELECT e.*,
@@ -98,6 +116,8 @@ SELECT s.artifact,
        s.signal_type,
        g.distinct_sessions,
        g.total_incidents,
+       g.last_seen,
+       g.recent_sessions,
        to_json(list(struct_pack(
          incident_id := s.incident_id, session_id := s.session_id, ts := s.ts,
          confidence := s.confidence, detail := s.detail, "window" := s."window")
@@ -105,13 +125,14 @@ SELECT s.artifact,
 FROM sampled s
 JOIN gated g USING (artifact, signal_type)
 WHERE s.pick <= %d
-GROUP BY s.artifact, s.signal_type, g.distinct_sessions, g.total_incidents
-ORDER BY g.distinct_sessions DESC, s.artifact, s.signal_type;`, minSessions, capN)
+GROUP BY s.artifact, s.signal_type, g.distinct_sessions, g.total_incidents, g.last_seen, g.recent_sessions
+ORDER BY g.recent_sessions DESC, g.distinct_sessions DESC, s.artifact, s.signal_type;`,
+		staleDays, minSessions, capN)
 }
 
 // clusterRows runs the clustering query against db and returns the raw rows.
-func clusterRows(ctx context.Context, db string, minSessions, maxIncidents int) ([]clusterRow, error) {
-	out, err := queryJSON(ctx, db, clusterSQL(minSessions, maxIncidents))
+func clusterRows(ctx context.Context, db string, minSessions, maxIncidents, staleDays int) ([]clusterRow, error) {
+	out, err := queryJSON(ctx, db, clusterSQL(minSessions, maxIncidents, staleDays))
 	if err != nil {
 		return nil, err
 	}
@@ -129,8 +150,8 @@ func clusterRows(ctx context.Context, db string, minSessions, maxIncidents int) 
 // roots), then reads each artifact's current content from disk. Clusters whose
 // canonical artifact no longer exists — a deleted worktree, a removed file — are
 // dropped; dropped is how many were dropped, for the caller to surface.
-func ClusterDB(ctx context.Context, db string, minSessions, maxIncidents int) (clusters []Cluster, dropped int, err error) {
-	rows, err := clusterRows(ctx, db, minSessions, maxIncidents)
+func ClusterDB(ctx context.Context, db string, minSessions, maxIncidents, staleDays int) (clusters []Cluster, dropped int, err error) {
+	rows, err := clusterRows(ctx, db, minSessions, maxIncidents, staleDays)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -153,33 +174,66 @@ func ClusterDB(ctx context.Context, db string, minSessions, maxIncidents int) (c
 			ArtifactExists:   true,
 			DistinctSessions: r.DistinctSessions,
 			TotalIncidents:   r.TotalIncidents,
+			LastSeen:         r.LastSeen,
+			RecentSessions:   r.RecentSessions,
 			Incidents:        capWindows(r.Incidents),
 		})
 	}
 	return clusters, dropped, nil
 }
 
-// TopClusters ranks clusters by signal strength — distinct_sessions, then
-// total_incidents, with cluster_id as a deterministic tiebreak — and keeps the
-// top n. n <= 0 keeps all. It returns the kept clusters and the dropped count
-// so callers can surface the truncation rather than letting it stay silent.
-func TopClusters(clusters []Cluster, n int) (kept []Cluster, dropped int) {
-	if n <= 0 || len(clusters) <= n {
-		return clusters, 0
-	}
+// RankClusters selects the diagnosis fleet. By default the fleet is the top n
+// clusters with in-window activity (recent_sessions > 0), ranked by recent
+// intensity, then lifetime breadth, then recency. Backlog clusters (no in-window
+// activity) are excluded from the default fleet and reported via droppedBacklog —
+// never deleted; pass includeStale to rank every cluster by lifetime breadth (the
+// historical-backlog mode). n <= 0 keeps all selected clusters. droppedTop is how
+// many in-fleet candidates the cap dropped.
+func RankClusters(clusters []Cluster, n int, includeStale bool) (fleet []Cluster, droppedBacklog, droppedTop int) {
 	ranked := make([]Cluster, len(clusters))
 	copy(ranked, clusters)
-	sort.SliceStable(ranked, func(i, j int) bool {
-		a, b := ranked[i], ranked[j]
-		if a.DistinctSessions != b.DistinctSessions {
-			return a.DistinctSessions > b.DistinctSessions
+	if includeStale {
+		sort.SliceStable(ranked, func(i, j int) bool { return lessBacklog(ranked[i], ranked[j]) })
+		fleet, droppedTop = cut(ranked, n)
+		return fleet, 0, droppedTop
+	}
+	var live, backlog []Cluster
+	for _, c := range ranked {
+		if c.RecentSessions > 0 {
+			live = append(live, c)
+		} else {
+			backlog = append(backlog, c)
 		}
-		if a.TotalIncidents != b.TotalIncidents {
-			return a.TotalIncidents > b.TotalIncidents
-		}
-		return a.ClusterID < b.ClusterID
-	})
+	}
+	sort.SliceStable(live, func(i, j int) bool { return lessLive(live[i], live[j]) })
+	fleet, droppedTop = cut(live, n)
+	return fleet, len(backlog), droppedTop
+}
+
+func cut(ranked []Cluster, n int) (kept []Cluster, dropped int) {
+	if n <= 0 || len(ranked) <= n {
+		return ranked, 0
+	}
 	return ranked[:n], len(ranked) - n
+}
+
+// lessLive ranks by recent intensity first; lessBacklog by lifetime breadth. Both
+// fall back to last_seen (ISO ts, descending) then cluster_id for determinism.
+func lessLive(a, b Cluster) bool {
+	if a.RecentSessions != b.RecentSessions {
+		return a.RecentSessions > b.RecentSessions
+	}
+	return lessBacklog(a, b)
+}
+
+func lessBacklog(a, b Cluster) bool {
+	if a.DistinctSessions != b.DistinctSessions {
+		return a.DistinctSessions > b.DistinctSessions
+	}
+	if a.LastSeen != b.LastSeen {
+		return a.LastSeen > b.LastSeen
+	}
+	return a.ClusterID < b.ClusterID
 }
 
 // truncate returns s unchanged if it fits within max bytes, otherwise the first
@@ -238,6 +292,8 @@ type ClusterIndexEntry struct {
 	ArtifactExists   bool   `json:"artifact_exists"`
 	DistinctSessions int    `json:"distinct_sessions"`
 	TotalIncidents   int    `json:"total_incidents"`
+	LastSeen         string `json:"last_seen"`
+	RecentSessions   int    `json:"recent_sessions"`
 	SampledIncidents int    `json:"sampled_incidents"`
 	File             string `json:"file"` // path to the per-cluster JSON, relative to the index
 }
@@ -281,6 +337,8 @@ func WriteClusters(clusters []Cluster, indexPath string) error {
 			ArtifactExists:   c.ArtifactExists,
 			DistinctSessions: c.DistinctSessions,
 			TotalIncidents:   c.TotalIncidents,
+			LastSeen:         c.LastSeen,
+			RecentSessions:   c.RecentSessions,
 			SampledIncidents: countIncidents(c.Incidents),
 			File:             rel,
 		})
@@ -301,4 +359,43 @@ func countIncidents(raw json.RawMessage) int {
 		return 0
 	}
 	return len(arr)
+}
+
+// Worktree-path canonicalization mirrored from clusterSQL's regexes — KEEP IN SYNC.
+// A repo root under either an in-repo (<repo>/.worktrees/<name>/) or sibling
+// (<repo>-worktrees/<name>/, worktrunk's default) worktree maps to the main root.
+var (
+	inRepoWorktreeRe  = regexp.MustCompile(`/\.worktrees/[^/]+/`)
+	siblingWorktreeRe = regexp.MustCompile(`([^/]+)-worktrees/[^/]+/`)
+)
+
+// canonicalizeRepoPrefix turns a repo root (possibly a worktree root) into the
+// canonical main-repo prefix that clusterSQL stores artifacts under, with a
+// trailing slash so it can't match a sibling repo ("/x/repo" vs "/x/repo-tools").
+func canonicalizeRepoPrefix(repoRoot string) string {
+	p := repoRoot
+	if !strings.HasSuffix(p, "/") {
+		p += "/"
+	}
+	// ReplaceAllString replaces every match while DuckDB's regexp_replace replaces only
+	// the first; for realistic paths (git disallows worktree-in-worktree) this is equivalent.
+	p = inRepoWorktreeRe.ReplaceAllString(p, "/")
+	p = siblingWorktreeRe.ReplaceAllString(p, "$1/")
+	return p
+}
+
+// FilterByPrefix keeps clusters whose canonical artifact lives under repoRoot.
+// repoRoot == "" is a no-op (the wide default).
+func FilterByPrefix(clusters []Cluster, repoRoot string) []Cluster {
+	if repoRoot == "" {
+		return clusters
+	}
+	prefix := canonicalizeRepoPrefix(repoRoot)
+	out := make([]Cluster, 0, len(clusters))
+	for _, c := range clusters {
+		if strings.HasPrefix(c.Artifact, prefix) {
+			out = append(out, c)
+		}
+	}
+	return out
 }

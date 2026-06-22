@@ -53,7 +53,7 @@ the base), and refuses to reset a branch that carries its own commits.
 nix develop
 go run ./cmd/applier prepare --proposals proposals.json --out apply-plan.json \
     --settings-repo "$AGENT_SMITH_SETTINGS_REPO" \   # repo owning the settings layers; escalations route here
-    --reason-log-dir reason-log --repo .             # dedup gate vs open PRs + prior reason-log (add --no-dedup to skip)
+    --reason-log-dir reason-log                       # dedup gate vs open PRs + prior reason-log (add --no-dedup to skip)
 go run ./cmd/applier suggest --plan apply-plan.json --proposals proposals.json --out suggestions.md  # dry run: review-only, no edits/PRs
 go run ./cmd/applier open    --plan apply-plan.json --group <group-id>     # → worktree + file + proposal ids
 #   (dispatch the editor subagent once per id into the worktree → editor-result-<id>.json; run the verify gate)
@@ -120,9 +120,10 @@ Before a resolved proposal is marked `ready`, `prepare` checks it against
 `skip-duplicate` with a `supersedes` field naming what it duplicates — rather than
 opening a second hard-conflicting PR. The two sources:
 
-- **Open PRs** — `gh pr list --state open` on the agent-smith repo (`--repo`,
-  default cwd). A PR whose head branch is the branch this proposal would push to
-  (same id ⇒ same artifact + fix) is a pending duplicate.
+- **Open PRs** — `gh pr list --state open` run per **target repo** (each proposal's
+  own resolved `repo_root`), fail-open: a repo that can't be queried never blocks. A
+  PR whose head branch is the branch this proposal would push to (same id ⇒ same
+  artifact + fix) is a pending duplicate.
 - **Prior reason-log history** (`--reason-log-dir`) — an entry that linked a PR
   (`**PR:**`) and still carries the deja-vu outcome placeholder (unresolved) is
   pending. It is matched on a **dedup key** of canonical artifact path
