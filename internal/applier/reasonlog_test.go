@@ -83,3 +83,72 @@ func TestAppendPRLink(t *testing.T) {
 		t.Error("expected error when heading matches but placeholder is absent")
 	}
 }
+
+// A legacy entry carries the PR placeholder but no machine-readable outcome
+// marker. Filling the PR link must leave one behind, or Reconcile can never
+// stamp the outcome.
+func TestAppendPRLinkAddsMissingOutcomeMarker(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "2026-06-01-glitch-legacy.md")
+	legacy := "# glitch-legacy\n\n**Artifact:** /g/CLAUDE.md\n\n## Diagnosis\n\nd\n\n" + prPlaceholder + "\n"
+	if err := os.WriteFile(path, []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := AppendPRLink(dir, "glitch-legacy", "https://github.com/x/y/pull/9"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), "**PR:** https://github.com/x/y/pull/9") {
+		t.Errorf("PR link not written:\n%s", got)
+	}
+	if !strings.Contains(string(got), "<!-- outcome: open -->") {
+		t.Errorf("outcome marker not added:\n%s", got)
+	}
+
+	// The reconcile path must now be able to stamp it.
+	n, err := Reconcile(dir, []PRStatus{{URL: "https://github.com/x/y/pull/9", State: "MERGED"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("reconciled %d entries, want 1", n)
+	}
+	got, err = os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), "<!-- outcome: merged -->") {
+		t.Errorf("outcome not reconciled:\n%s", got)
+	}
+}
+
+// Reconcile must also stamp an entry still carrying only the legacy prose marker,
+// so a ledger that skipped the migration step still heals.
+func TestReconcileStampsLegacyMarker(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "2026-06-01-glitch-prose.md")
+	entry := "# glitch-prose\n\n**PR:** https://github.com/x/y/pull/3\n\n" +
+		"<!-- outcome appended by deja-vu -->\n"
+	if err := os.WriteFile(path, []byte(entry), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	n, err := Reconcile(dir, []PRStatus{{URL: "https://github.com/x/y/pull/3", State: "CLOSED"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("reconciled %d entries, want 1", n)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), "<!-- outcome: closed -->") {
+		t.Errorf("legacy marker not stamped:\n%s", got)
+	}
+}

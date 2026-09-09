@@ -71,11 +71,20 @@ reads `editor-result-<id>.json` for each of those ids from `--editor-result-dir`
 
 `reconcile` closes the loop with the analyst's deja-vu skip. Each reason-log entry
 is born `<!-- outcome: open -->`; `submit` fills its `**PR:**` link. Later,
-`reconcile` queries `gh pr list --state all` for every repo referenced by those PR
-links and rewrites each entry's outcome marker to match: `merged`, or `closed`
-(a PR the user closed without merging). A `closed`/`rejected` entry makes the
-analyst skip that `(artifact, signal_type)` cluster on the next run, so a rejected
-proposal is never regenerated. Run it periodically (or before a fresh `mine`).
+`reconcile` resolves each linked PR with `gh pr view <url>` and rewrites the
+entry's outcome marker to match: `merged`, or `closed` (a PR the user closed
+without merging). A `closed`/`rejected` entry makes the analyst skip that
+`(artifact, signal_type)` cluster on the next run, so a rejected proposal is never
+regenerated. Run it periodically (or before a fresh `mine`).
+
+PRs are resolved one URL at a time rather than by listing each repo, because a
+repo-wide `gh pr list` is capped at a recency window — in a high-volume repo an
+older PR falls outside it and its entry would stay `open` forever.
+
+`reconcile` first migrates any entry predating the machine-readable marker: the
+prose `<!-- outcome appended by deja-vu -->` becomes `<!-- outcome: open -->`, and
+an entry carrying no marker at all gets one. Without that, the outcome regex finds
+nothing to rewrite and the whole write-back is a silent no-op.
 
 ## Dry run
 

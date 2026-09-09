@@ -64,7 +64,7 @@ func assertOutcome(t *testing.T, path, want string) {
 	}
 }
 
-func TestEntryReposDistinct(t *testing.T) {
+func TestEntryPRURLsDistinct(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "a.md"), []byte(entryWithPR("a", "https://github.com/noamsto/lazytmux/pull/1")), 0o644); err != nil {
 		t.Fatal(err)
@@ -75,16 +75,20 @@ func TestEntryReposDistinct(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "c.md"), []byte(entryWithPR("c", "https://github.com/noamsto/agent-smith/pull/9")), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// An entry with no PR yet must not contribute a repo.
+	// An entry with no PR yet must not contribute a URL.
 	if err := os.WriteFile(filepath.Join(dir, "d.md"), []byte("# d\n\n<!-- outcome: open -->\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// A duplicate URL must collapse.
+	if err := os.WriteFile(filepath.Join(dir, "e.md"), []byte(entryWithPR("e", "https://github.com/noamsto/lazytmux/pull/1")), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
-	repos, err := EntryRepos(dir)
+	urls, err := EntryPRURLs(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(repos) != 2 {
-		t.Fatalf("expected 2 distinct repos, got %v", repos)
+	if len(urls) != 3 {
+		t.Fatalf("expected 3 distinct PR URLs, got %v", urls)
 	}
 }

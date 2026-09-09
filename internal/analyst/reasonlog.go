@@ -27,6 +27,12 @@ const prPlaceholder = PRPlaceholder
 
 var outcomeRe = regexp.MustCompile(`<!-- outcome: (\w+) -->`)
 
+// legacyOutcomeMarker is the prose marker the loop emitted before the
+// machine-readable form existed. It carries no state, so an entry bearing it is
+// Open. The leading "<!-- " keeps it distinct from the same words inside
+// PRPlaceholder.
+const legacyOutcomeMarker = "<!-- outcome appended by deja-vu -->"
+
 // outcomeMarker renders the machine-readable outcome line.
 func outcomeMarker(state string) string {
 	return fmt.Sprintf("<!-- outcome: %s -->", state)
@@ -38,16 +44,61 @@ func Outcome(content string) string {
 	if m := outcomeRe.FindStringSubmatch(content); m != nil {
 		return m[1]
 	}
+	if strings.Contains(content, legacyOutcomeMarker) {
+		return OutcomeOpen
+	}
 	return ""
 }
 
-// SetOutcome rewrites the outcome marker in a reason-log entry's content to state.
-// It returns the updated content and whether a marker was found and changed.
+// SetOutcome rewrites the outcome marker in a reason-log entry's content to state,
+// normalizing the legacy prose marker on the way. It returns the updated content
+// and whether a marker was found and changed.
 func SetOutcome(content, state string) (string, bool) {
+	content = strings.Replace(content, legacyOutcomeMarker, outcomeMarker(OutcomeOpen), 1)
 	if !outcomeRe.MatchString(content) {
 		return content, false
 	}
 	return outcomeRe.ReplaceAllString(content, outcomeMarker(state)), true
+}
+
+// EnsureOutcomeMarker appends a canonical open marker when content carries none,
+// so an entry written before the marker existed still reconciles once a PR is
+// attached. Content already carrying a marker is returned unchanged.
+func EnsureOutcomeMarker(content string) string {
+	if Outcome(content) != "" {
+		return content
+	}
+	return strings.TrimRight(content, "\n") + "\n\n" + outcomeMarker(OutcomeOpen) + "\n"
+}
+
+// MigrateOutcomeMarkers normalizes every reason-log entry under dir to the
+// machine-readable outcome marker: the legacy prose marker becomes
+// `<!-- outcome: open -->`, and an entry predating the marker gets one appended.
+// Entries already carrying a canonical marker are left untouched. Reconcile is a
+// no-op on an unmigrated ledger, so this runs ahead of it. Returns how many
+// entries were rewritten.
+func MigrateOutcomeMarkers(dir string) (int, error) {
+	paths, err := filepath.Glob(filepath.Join(dir, "*.md"))
+	if err != nil {
+		return 0, fmt.Errorf("glob %s: %w", dir, err)
+	}
+	migrated := 0
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return migrated, fmt.Errorf("read %s: %w", path, err)
+		}
+		content := string(data)
+		next := EnsureOutcomeMarker(strings.Replace(content, legacyOutcomeMarker, outcomeMarker(OutcomeOpen), 1))
+		if next == content {
+			continue
+		}
+		if err := os.WriteFile(path, []byte(next), 0o644); err != nil {
+			return migrated, fmt.Errorf("write %s: %w", path, err)
+		}
+		migrated++
+	}
+	return migrated, nil
 }
 
 // Entry is a parsed reason-log entry: the proposal id (heading), the implicated
