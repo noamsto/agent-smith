@@ -27,3 +27,5 @@ No change. The artifact is a pure `@AGENTS.md` redirect and is functioning corre
 Hard rule check: the artifact contains no guidance on any of the observed behaviors, so `strengthen` is the closest fit over `add` only because there is genuinely nothing to add to a redirect file — but the honest conclusion is that no edit to THIS artifact is warranted. The `user_correction` signal is driven by incidents (skill launches, a tool-input error) that have no causal link to `See @AGENTS.md`; the include target AGENTS.md is the actual owner and is out of scope for changes to this file. Editing a one-line pointer would add noise without affecting behavior. Expected effect of the recommendation: re-route the cluster to AGENTS.md / the SendMessage tool so a real fix can be proposed where it can take effect. Low confidence reflects the misattribution and the absence of any window tying behavior to this artifact.
 
 <!-- PR link appended by the applier; outcome appended by deja-vu -->
+
+<!-- outcome: open -->

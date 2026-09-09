@@ -54,4 +54,4 @@ Signal is `inefficiency`; the windows show the exact mechanism: bare-file_path R
 
 **PR:** https://github.com/noamsto/nix-config/pull/2
 
-<!-- outcome appended by deja-vu -->
+<!-- outcome: merged -->

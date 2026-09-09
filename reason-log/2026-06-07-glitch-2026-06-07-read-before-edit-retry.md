@@ -46,3 +46,5 @@ ensure-read.sh reads the tool input from stdin (JSON: .tool_input.file_path), an
 Drove off the `retry` signal: the most consistent, mechanically-fixable retry across the sampled windows is the Edit/Write -> 'File has not been read yet' -> Read -> retry loop (visible in 57ef5be4, d3d515a2, ba264db9, 138a9606, 82e841f4, 6b57aaec). Chose escalate-out-of-instructions because (a) the artifact holds no guidance on this, but (b) a Read-before-write rule is a precondition a model repeatedly fails on even when it 'knows' it, so adding prose would duplicate latent guidance without preventing the error; a PreToolUse hook makes the failure impossible by design (define-the-error-out-of-existence). Expected effect: eliminates the read-before-write retry round-trip across all sessions touching mono. Confidence medium: the read-before-write loop is the clearest fixable sub-pattern, but this cluster also bundles unrelated retries (duplicate `gh pr checks`, `wt switch --create` on existing branch) that the hook does not address.
 
 <!-- PR link appended by the applier; outcome appended by deja-vu -->
+
+<!-- outcome: open -->

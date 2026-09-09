@@ -36,4 +36,4 @@ The retry signal is dominated by 'File has been modified since read' errors whos
 
 **PR:** https://github.com/noamsto/lazytmux/pull/14
 
-<!-- outcome appended by deja-vu -->
+<!-- outcome: closed -->

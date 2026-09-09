@@ -38,4 +38,4 @@ Signal is user_correction on /home/noams/nix-config/CLAUDE.md across 35 sessions
 
 **PR:** https://github.com/noamsto/nix-config/pull/6
 
-<!-- outcome appended by deja-vu -->
+<!-- outcome: merged -->

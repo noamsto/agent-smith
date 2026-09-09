@@ -39,4 +39,4 @@ Drove by the tool_error signal: among the sampled incidents the only cleanly art
 
 **PR:** https://github.com/noamsto/nix-config/pull/10
 
-<!-- outcome appended by deja-vu -->
+<!-- outcome: merged -->

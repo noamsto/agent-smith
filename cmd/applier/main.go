@@ -249,23 +249,30 @@ func runReconcile(args []string) {
 	reasonLog := fs.String("reason-log-dir", "reason-log", "reason-log directory")
 	_ = fs.Parse(args)
 
-	repos, err := applier.EntryRepos(*reasonLog)
+	migrated, err := analyst.MigrateOutcomeMarkers(*reasonLog)
+	if err != nil {
+		fatal(err)
+	}
+	if migrated > 0 {
+		fmt.Printf("migrated %d legacy outcome marker(s)\n", migrated)
+	}
+	urls, err := applier.EntryPRURLs(*reasonLog)
 	if err != nil {
 		fatal(err)
 	}
 	var statuses []applier.PRStatus
-	for _, repo := range repos {
-		s, err := applier.FetchPRStatuses(applier.Run, repo)
+	for _, url := range urls {
+		s, err := applier.FetchPRStatus(applier.Run, url)
 		if err != nil {
 			fatal(err)
 		}
-		statuses = append(statuses, s...)
+		statuses = append(statuses, s)
 	}
 	n, err := applier.Reconcile(*reasonLog, statuses)
 	if err != nil {
 		fatal(err)
 	}
-	fmt.Printf("reconciled %d reason-log outcome(s) across %d repo(s)\n", n, len(repos))
+	fmt.Printf("reconciled %d reason-log outcome(s) across %d PR(s)\n", n, len(urls))
 }
 
 func loadEditorResult(path string) (applier.EditorResult, error) {

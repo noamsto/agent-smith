@@ -59,4 +59,4 @@ Signal is inefficiency: the recurring behavior in every sampled window is a full
 
 **PR:** https://github.com/noamsto/nix-config/pull/8
 
-<!-- outcome appended by deja-vu -->
+<!-- outcome: closed -->

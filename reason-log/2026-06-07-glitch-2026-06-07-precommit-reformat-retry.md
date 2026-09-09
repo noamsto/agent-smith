@@ -29,4 +29,4 @@ Driven by the tool_error signal: the most consistent novel failure across sessio
 
 **PR:** https://github.com/noamsto/nix-config/pull/9
 
-<!-- outcome appended by deja-vu -->
+<!-- outcome: merged -->

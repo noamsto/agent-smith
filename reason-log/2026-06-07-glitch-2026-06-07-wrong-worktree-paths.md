@@ -36,3 +36,5 @@ Location: hooks block of the nix-settings-json --settings overlay in home/ai/cla
 Signal is tool_error, 49 incidents over 4 sessions. The most consistent cross-session pattern is wrong-worktree absolute paths (three separate Read attempts ENOENT in 4a9928f9, plus eng-6014/eng-6016 targets from the chore-nango cwd), with Edit/Write-before-Read as the second recurring shape. The artifact carries no relevant guidance, so the hard rule against duplicating existing rules does not bind; but the artifact is a degenerate pointer file and the failure is mechanical and repeats despite model awareness — the definition of an escalate-out-of-instructions case. A PreToolUse worktree-mismatch hook converts a silent ENOENT-and-retry loop into an immediate, actionable block, eliminating the dominant error class instead of restating it as prose. Marked medium because the cluster mixes several distinct error shapes (also SendMessage summary, MCP arg validation, Notion permissions) that one hook will not all cover; the worktree guard addresses the largest and most repeated slice.
 
 <!-- PR link appended by the applier; outcome appended by deja-vu -->
+
+<!-- outcome: open -->

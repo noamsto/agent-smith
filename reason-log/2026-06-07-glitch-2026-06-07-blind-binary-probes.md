@@ -36,4 +36,4 @@ signal_type=tool_error drove this. The incident sample is heterogeneous (Skill, 
 
 **PR:** https://github.com/noamsto/lazytmux/pull/12
 
-<!-- outcome appended by deja-vu -->
+<!-- outcome: closed -->

@@ -84,54 +84,41 @@ func Reconcile(dir string, statuses []PRStatus) (int, error) {
 	return updated, nil
 }
 
-// EntryRepos returns the distinct GitHub "owner/repo" slugs referenced by the PR
-// links across the reason-log dir, so the caller can query each repo once.
-func EntryRepos(dir string) ([]string, error) {
+// EntryPRURLs returns the distinct PR URLs referenced across the reason-log dir.
+func EntryPRURLs(dir string) ([]string, error) {
 	paths, err := filepath.Glob(filepath.Join(dir, "*.md"))
 	if err != nil {
 		return nil, fmt.Errorf("glob %s: %w", dir, err)
 	}
 	seen := map[string]bool{}
-	var repos []string
+	var urls []string
 	for _, path := range paths {
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return nil, fmt.Errorf("read %s: %w", path, err)
 		}
-		repo := repoSlug(entryPRURL(string(data)))
-		if repo == "" || seen[repo] {
+		url := entryPRURL(string(data))
+		if url == "" || seen[url] {
 			continue
 		}
-		seen[repo] = true
-		repos = append(repos, repo)
+		seen[url] = true
+		urls = append(urls, url)
 	}
-	return repos, nil
+	return urls, nil
 }
 
-// repoSlug extracts "owner/repo" from a github.com PR URL.
-func repoSlug(prURL string) string {
-	const host = "https://github.com/"
-	if !strings.HasPrefix(prURL, host) {
-		return ""
-	}
-	parts := strings.SplitN(strings.TrimPrefix(prURL, host), "/", 3)
-	if len(parts) < 2 {
-		return ""
-	}
-	return parts[0] + "/" + parts[1]
-}
-
-// FetchPRStatuses runs `gh pr list --state all -R repo` and decodes the URL+state
-// of every PR. It is the production source for Reconcile's injected statuses.
-func FetchPRStatuses(run runner, repo string) ([]PRStatus, error) {
-	out, err := run("", "gh", "pr", "list", "-R", repo, "--state", "all",
-		"--limit", "1000", "--json", "url,state")
+// FetchPRStatus resolves one PR by URL via `gh pr view`. Addressing each PR
+// directly is what keeps an older PR in a high-volume repo reachable: a repo-wide
+// `gh pr list` is capped at a recency window, so it silently omits any PR that has
+// scrolled past it and Reconcile then leaves that entry unstamped forever.
+func FetchPRStatus(run runner, prURL string) (PRStatus, error) {
+	out, err := run("", "gh", "pr", "view", prURL, "--json", "url,state")
 	if err != nil {
-		return nil, fmt.Errorf("gh pr list %s: %w", repo, err)
+		return PRStatus{}, fmt.Errorf("gh pr view %s: %w", prURL, err)
 	}
-	var statuses []PRStatus
-	if err := json.Unmarshal(out, &statuses); err != nil {
-		return nil, fmt.Errorf("decode gh pr list %s: %w", repo, err)
+	var status PRStatus
+	if err := json.Unmarshal(out, &status); err != nil {
+		return PRStatus{}, fmt.Errorf("decode gh pr view %s: %w", prURL, err)
 	}
-	return statuses, nil
+	return status, nil
 }

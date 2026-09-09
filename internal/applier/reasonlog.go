@@ -12,8 +12,8 @@ import (
 const prPlaceholder = analyst.PRPlaceholder
 
 // AppendPRLink fills the applier placeholder in the reason-log entry whose first
-// heading is "# <id>" with the PR URL, leaving the deja-vu outcome marker that the
-// assemble step wrote in place. It scans by heading (not filename) so it is
+// heading is "# <id>" with the PR URL, leaving the deja-vu outcome marker in place
+// (adding one if the entry predates it). It scans by heading (not filename) so it is
 // decoupled from the analyst's slug logic, and is idempotent — a second call with
 // a PR line already present is a no-op.
 func AppendPRLink(dir, id, prURL string) error {
@@ -37,6 +37,9 @@ func AppendPRLink(dir, id, prURL string) error {
 			return fmt.Errorf("reason-log entry %q has no applier placeholder to fill", id)
 		}
 		content = strings.Replace(content, prPlaceholder, fmt.Sprintf("**PR:** %s", prURL), 1)
+		// Entries written before the machine-readable marker existed carry none;
+		// without one Reconcile can never stamp the outcome.
+		content = analyst.EnsureOutcomeMarker(content)
 		return os.WriteFile(path, []byte(content), 0o644)
 	}
 	return fmt.Errorf("no reason-log entry with heading %q in %s", id, dir)

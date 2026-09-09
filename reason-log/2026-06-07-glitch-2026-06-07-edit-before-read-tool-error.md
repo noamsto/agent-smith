@@ -44,3 +44,5 @@ The exact recovery mechanism (auto-inject Read vs. deny-with-reason) should matc
 Signal tool_error drove this: 11 incidents / 4 sessions, the majority being the identical 'File has not been read yet' rejection on Edit/Write (turns 112-117, 124-129, 238-243, 345-350, 744-748, 1057-1062, 1135-1138), with a few adjacent stale-cwd Bash path errors. Per hard rules, the artifact already exists but holds zero relevant guidance and is a pure redirect, so 'add' is both wrong-target and the known-failing prose remedy; the behavior is mechanical and repeats every session, which is the defining trigger for escalate-out-of-instructions. A PreToolUse hook that guarantees the file is Read before an Edit/Write makes the error impossible (Define errors out of existence), eliminating ~one wasted assistant turn per occurrence. Confidence medium rather than high because the precise PreToolUse output contract for auto-recovery is version-dependent and must be verified against the installed Claude Code before wiring.
 
 <!-- PR link appended by the applier; outcome appended by deja-vu -->
+
+<!-- outcome: open -->
