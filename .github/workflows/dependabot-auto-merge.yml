@@ -21,10 +21,13 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Enable auto-merge
-        # Nix flake inputs are commit pins, so update-type comes back empty for
-        # them — excluding majors rather than allow-listing patch/minor keeps
-        # those bumps eligible while still holding back Go/Action majors.
-        if: steps.metadata.outputs.update-type != 'version-update:semver-major'
+        # A nix flake input is a commit pin with no version to read, so
+        # fetch-metadata reports semver-major for every bump. Exempting the
+        # ecosystem keeps those eligible while still holding back Go and
+        # Action majors.
+        if: >-
+          steps.metadata.outputs.package-ecosystem == 'nix'
+          || steps.metadata.outputs.update-type != 'version-update:semver-major'
         run: gh pr merge --auto --squash "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
