@@ -28,4 +28,4 @@ The user_correction signal drove this, but the session-stratified sample shows t
 
 **PR:** https://github.com/noamsto/nix-config/pull/7
 
-<!-- outcome appended by deja-vu -->
+<!-- outcome: closed -->

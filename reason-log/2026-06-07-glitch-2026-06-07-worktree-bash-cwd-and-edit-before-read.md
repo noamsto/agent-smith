@@ -48,3 +48,5 @@ Separately, the Edit-before-Read failures are already enforceable by the existin
 Signal is tool_error across 4 sessions / 11 incidents. The artifact_content is a bare redirect with no guidance, so 'add'/'strengthen' on THIS file would be writing rules into a file whose sole job is to point at AGENTS.md — and prose rules are exactly what has failed here. The dominant deterministic sub-pattern (relative `cd` failing under the per-call cwd reset documented for agent threads) is a harness invariant, best 'defined out of existence' by a PreToolUse hook that rewrites relative cd to absolute, per the user's 'define errors out of existence' principle. Expected effect: eliminates the cd-no-such-directory / doubled-path retries and their follow-up pwd/ls probing turns, removing the largest share of incidents in this cluster. Confidence medium: the cluster mixes a few unrelated errors (SendMessage missing summary, Edit-before-Read) that the hook does not address, so it reduces but does not fully clear the signal.
 
 <!-- PR link appended by the applier; outcome appended by deja-vu -->
+
+<!-- outcome: open -->

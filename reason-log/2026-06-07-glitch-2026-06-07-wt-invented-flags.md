@@ -50,4 +50,4 @@ Drove by the tool_error signal: the `wt -y...` failure is the only pattern that 
 
 **PR:** https://github.com/factify-inc/mono/pull/2022
 
-<!-- outcome appended by deja-vu -->
+<!-- outcome: closed -->

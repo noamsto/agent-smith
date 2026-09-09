@@ -40,4 +40,4 @@ Inefficiency signal: 12/12 sampled incidents are full Reads of files well over t
 
 **PR:** https://github.com/noamsto/nix-config/pull/4
 
-<!-- outcome appended by deja-vu -->
+<!-- outcome: merged -->

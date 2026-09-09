@@ -40,4 +40,4 @@ Driven by the `inefficiency` signal: every incident is a whole-file/large-artifa
 
 **PR:** https://github.com/factify-inc/mono/pull/2020
 
-<!-- outcome appended by deja-vu -->
+<!-- outcome: closed -->

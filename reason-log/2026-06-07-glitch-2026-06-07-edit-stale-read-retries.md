@@ -39,4 +39,4 @@ Drove by the `retry` signal: the sampled windows are overwhelmingly Edit-after-s
 
 **PR:** https://github.com/noamsto/nix-config/pull/3
 
-<!-- outcome appended by deja-vu -->
+<!-- outcome: merged -->

@@ -45,4 +45,4 @@ The user_correction signal recurs across 14 sessions; the session-stratified sam
 
 **PR:** https://github.com/noamsto/lazytmux/pull/13
 
-<!-- outcome appended by deja-vu -->
+<!-- outcome: closed -->
