@@ -82,3 +82,31 @@ func TestToolErrorAndRetry(t *testing.T) {
 		t.Errorf("expected exactly 1 retry incident, got %d", c["retry"])
 	}
 }
+
+// A --since run used to kill the whole pipeline: two `->>` extractions ANDed in
+// the WHERE clause mis-resolve on DuckDB 1.5.3 and fail to cast column j. The
+// fixture also carries a timestamp-less {"type":"permission-mode",...} line, the
+// record type the original error message named.
+func TestSinceToleratesTimestamplessRecords(t *testing.T) {
+	cfg := testConfig(t, "since_no_timestamp", "user_correction")
+	cfg.Since = "2026-08-01"
+	if err := Run(context.Background(), cfg); err != nil {
+		t.Fatalf("Run with --since: %v", err)
+	}
+	c := countBySignal(t, cfg.OutDB)
+	// Only the September correction is in window; the May one is filtered out.
+	if c["user_correction"] != 1 {
+		t.Fatalf("expected 1 in-window user_correction incident, got %d", c["user_correction"])
+	}
+}
+
+func TestFullMineKeepsBothTurnsDespiteTimestamplessRecord(t *testing.T) {
+	cfg := testConfig(t, "since_no_timestamp", "user_correction")
+	if err := Run(context.Background(), cfg); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	c := countBySignal(t, cfg.OutDB)
+	if c["user_correction"] != 2 {
+		t.Fatalf("expected 2 user_correction incidents without --since, got %d", c["user_correction"])
+	}
+}

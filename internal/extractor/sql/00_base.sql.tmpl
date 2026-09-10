@@ -36,8 +36,15 @@ SELECT j->>'type'                      AS type,
        row_number() OVER (PARTITION BY j->>'sessionId'
                           ORDER BY j->>'timestamp', j->>'uuid') AS turn
 FROM raw
-WHERE j->>'sessionId' IS NOT NULL
-{{if .Since}}  AND j->>'timestamp' >= '{{.Since}}'{{end}};
+-- json_extract_string, not `->>`: on DuckDB 1.5.3 two `->>` extractions ANDed in
+-- a WHERE clause mis-resolve to the numeric-index overload and fail with
+-- "Failed to cast value to numerical ... from source column j", which kills this
+-- table and every table derived from it. Either predicate alone is fine.
+WHERE json_extract_string(j, '$.sessionId') IS NOT NULL
+  -- Non-transcript lines (e.g. {"type":"permission-mode",...}) carry a sessionId
+  -- but no timestamp, so they are not orderable in the turn window.
+  AND json_extract_string(j, '$.timestamp') IS NOT NULL
+{{if .Since}}  AND json_extract_string(j, '$.timestamp') >= '{{.Since}}'{{end}};
 
 -- 3) Assistant tool_use blocks (scalar fields pre-extracted as columns).
 CREATE OR REPLACE TEMP TABLE tool_uses AS
