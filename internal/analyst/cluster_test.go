@@ -537,3 +537,53 @@ func TestFilterByPrefix(t *testing.T) {
 		t.Errorf("empty prefix should keep all")
 	}
 }
+
+// A cluster that goes quiet, is suppressed, or falls below --top must not leave
+// its file behind: anything that globs clusters/ instead of reading the index
+// would hand the Oracle a stale cluster with stale evidence.
+func TestWriteClustersPrunesStaleFiles(t *testing.T) {
+	dir := t.TempDir()
+	index := filepath.Join(dir, "clusters.json")
+
+	first := []Cluster{
+		{ClusterID: "tool_error::/g/CLAUDE.md", SignalType: "tool_error", Artifact: "/g/CLAUDE.md"},
+		{ClusterID: "retry::/g/CLAUDE.md", SignalType: "retry", Artifact: "/g/CLAUDE.md"},
+	}
+	if err := WriteClusters(first, index); err != nil {
+		t.Fatal(err)
+	}
+	before, err := filepath.Glob(filepath.Join(dir, "clusters", "*.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(before) != 2 {
+		t.Fatalf("expected 2 cluster files, got %v", before)
+	}
+
+	// Second run keeps only the tool_error cluster.
+	if err := WriteClusters(first[:1], index); err != nil {
+		t.Fatal(err)
+	}
+	after, err := filepath.Glob(filepath.Join(dir, "clusters", "*.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != 1 {
+		t.Fatalf("expected the retry file pruned, got %v", after)
+	}
+	if !strings.Contains(after[0], "tool-error") {
+		t.Fatalf("wrong file survived: %v", after)
+	}
+
+	// A non-cluster file in the dir is left alone.
+	keep := filepath.Join(dir, "clusters", "notes.txt")
+	if err := os.WriteFile(keep, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteClusters(first[:1], index); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(keep); err != nil {
+		t.Fatalf("non-cluster file removed: %v", err)
+	}
+}

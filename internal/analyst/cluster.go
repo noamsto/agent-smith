@@ -341,6 +341,7 @@ func WriteClusters(clusters []Cluster, indexPath string) error {
 		return err
 	}
 
+	written := make(map[string]bool, len(clusters))
 	index := make([]ClusterIndexEntry, 0, len(clusters))
 	for _, c := range clusters {
 		name := slugify(c.ClusterID)
@@ -357,6 +358,7 @@ func WriteClusters(clusters []Cluster, indexPath string) error {
 		if err := os.WriteFile(file, append(data, '\n'), 0o644); err != nil {
 			return err
 		}
+		written[name] = true
 
 		rel, err := filepath.Rel(dir, file)
 		if err != nil {
@@ -379,11 +381,36 @@ func WriteClusters(clusters []Cluster, indexPath string) error {
 		})
 	}
 
+	if err := pruneStaleClusters(clustersDir, written); err != nil {
+		return err
+	}
+
 	idx, err := json.MarshalIndent(index, "", "  ")
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(indexPath, append(idx, '\n'), 0o644)
+}
+
+// pruneStaleClusters deletes per-cluster files this run did not write. A cluster
+// that has gone quiet, been suppressed, or fallen below --top otherwise leaves
+// its file behind, and anything that globs clusters/ instead of reading the
+// index feeds a stale cluster — with stale evidence — straight to the Oracle.
+func pruneStaleClusters(clustersDir string, written map[string]bool) error {
+	entries, err := os.ReadDir(clustersDir)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || written[name] || !strings.HasSuffix(name, ".json") {
+			continue
+		}
+		if err := os.Remove(filepath.Join(clustersDir, name)); err != nil {
+			return fmt.Errorf("prune stale cluster %s: %w", name, err)
+		}
+	}
+	return nil
 }
 
 // countIncidents returns the number of sampled incidents in a cluster's
