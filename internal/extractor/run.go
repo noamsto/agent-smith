@@ -6,10 +6,12 @@ import (
 	"bytes"
 	"context"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"text/template"
 )
@@ -94,6 +96,65 @@ func Run(ctx context.Context, cfg Config) error {
 		return err
 	}
 	return nil
+}
+
+// Coverage is the time span and size of the accumulated incident history.
+type Coverage struct {
+	First     string // earliest incident date, YYYY-MM-DD; "" when the db is empty
+	Last      string // latest incident date, YYYY-MM-DD; "" when the db is empty
+	Incidents int
+	Sessions  int
+}
+
+// String renders the one-line history banner.
+func (c Coverage) String() string {
+	if c.Incidents == 0 {
+		return "history: empty"
+	}
+	return fmt.Sprintf("history: %s \u2192 %s (%d incidents, %d sessions)",
+		c.First, c.Last, c.Incidents, c.Sessions)
+}
+
+// ReadCoverage reports what span of history the database holds. The corpus on
+// disk is a rolling retention window, so the db is the only record of anything
+// older; printing its span is what makes a truncated history visible.
+func ReadCoverage(ctx context.Context, db string) (Coverage, error) {
+	out, err := exec.CommandContext(ctx, duckDBBin(), "-json", db, "-c",
+		`SELECT min(substr(ts,1,10)) AS first, max(substr(ts,1,10)) AS last,
+		        count(*) AS incidents, count(DISTINCT session_id) AS sessions
+		 FROM incidents;`).Output()
+	if err != nil {
+		return Coverage{}, fmt.Errorf("read coverage from %s: %w", db, err)
+	}
+	var rows []struct {
+		First     *string     `json:"first"`
+		Last      *string     `json:"last"`
+		Incidents json.Number `json:"incidents"`
+		Sessions  json.Number `json:"sessions"`
+	}
+	if err := json.Unmarshal(out, &rows); err != nil {
+		return Coverage{}, fmt.Errorf("decode coverage %q: %w", out, err)
+	}
+	if len(rows) != 1 {
+		return Coverage{}, fmt.Errorf("expected 1 coverage row, got %d", len(rows))
+	}
+	r := rows[0]
+	incidents, err := strconv.Atoi(r.Incidents.String())
+	if err != nil {
+		return Coverage{}, fmt.Errorf("coverage incident count %q: %w", r.Incidents, err)
+	}
+	sessions, err := strconv.Atoi(r.Sessions.String())
+	if err != nil {
+		return Coverage{}, fmt.Errorf("coverage session count %q: %w", r.Sessions, err)
+	}
+	c := Coverage{Incidents: incidents, Sessions: sessions}
+	if r.First != nil {
+		c.First = *r.First
+	}
+	if r.Last != nil {
+		c.Last = *r.Last
+	}
+	return c, nil
 }
 
 // Summary returns per-signal incident counts from a populated db.

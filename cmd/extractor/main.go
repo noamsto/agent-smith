@@ -51,6 +51,21 @@ func main() {
 		}
 	}
 
+	// The corpus on disk is a rolling retention window, so the db is the only
+	// record of anything older. A run that creates it starts history at the
+	// earliest surviving transcript; a marker without a db means someone deleted
+	// one and not the other. Both are silent data loss unless we say so.
+	_, dbErr := os.Stat(cfg.OutDB)
+	freshDB := os.IsNotExist(dbErr)
+	if freshDB {
+		if extractor.ReadMarker(cfg.OutDB) != "" {
+			fmt.Fprintf(os.Stderr, "extractor: WARNING %s is missing but its last-run marker is not — "+
+				"the database was deleted while the marker survived\n", cfg.OutDB)
+		}
+		fmt.Fprintf(os.Stderr, "extractor: WARNING creating a new %s — history will begin at the "+
+			"earliest transcript still on disk; anything older is unrecoverable\n", cfg.OutDB)
+	}
+
 	runStart := time.Now()
 	ctx := context.Background()
 	if err := extractor.Run(ctx, cfg); err != nil {
@@ -66,5 +81,10 @@ func main() {
 		fmt.Fprintln(os.Stderr, "extractor: summary:", err)
 		os.Exit(1)
 	}
-	fmt.Printf("wrote incidents to %s\n%s", cfg.OutDB, summary)
+	coverage, err := extractor.ReadCoverage(ctx, cfg.OutDB)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "extractor: coverage:", err)
+		os.Exit(1)
+	}
+	fmt.Printf("wrote incidents to %s\n%s%s\n", cfg.OutDB, summary, coverage)
 }
