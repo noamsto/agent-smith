@@ -25,7 +25,9 @@ skill (Skill tool) first.
    Use `$PROPOSALS_DIR` everywhere this skill previously used `/tmp/agent-smith-proposals-in`
    (Oracle/Skeptic outputs `p-*.json` / `v-*.json`, and the `analyst assemble --proposals-dir "$PROPOSALS_DIR"` call).
 2. For each index entry in `clusters.json` (iterate with `jq -r '.[].file'`; each
-   entry's `file` is the per-cluster JSON path relative to `clusters.json`'s dir):
+   entry's `file` is the per-cluster JSON path relative to `clusters.json`'s dir —
+   resolve it against that dir and dispatch the absolute path as `<file>`, so no
+   subagent resolves it against its own cwd):
    - Dispatch the **agent-smith:oracle** subagent (Agent tool) with this prompt:
      "Read the cluster at `<file>` and follow your instructions to produce ONE
      proposal. Write the JSON proposal to `$PROPOSALS_DIR/p-<i>.json`
@@ -36,10 +38,11 @@ skill (Skill tool) first.
    into human triage; an unverified inference (e.g. "no guidance exists" judged
    without resolving `@AGENTS.md`) propagates to wrong PRs. For each `p-<i>.json`
    the Oracle wrote, dispatch the **agent-smith:skeptic** subagent (Agent tool):
-   "Read the proposal at `$PROPOSALS_DIR/p-<i>.json` and follow your
-   instructions to refute it against the actual repo. Write the verdict JSON to
-   `$PROPOSALS_DIR/v-<i>.json` and return only your one-line final
-   message — not the JSON."
+   "Read the proposal at `$PROPOSALS_DIR/p-<i>.json`; its cluster is at `<file>` —
+   the same per-cluster path you gave the Oracle for this `<i>`, and the only cluster
+   file to read. Follow your instructions to refute the proposal against the actual
+   repo. Write the verdict JSON to `$PROPOSALS_DIR/v-<i>.json` and return only your
+   one-line final message — not the JSON."
    - If the skeptic returns `verdict: refuted`, **drop** that proposal: delete
      `p-<i>.json` so it never reaches assembly. If it errors or writes no verdict,
      treat that as refuted (default-drop on unverified) and drop the proposal too.
