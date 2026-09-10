@@ -1,6 +1,7 @@
 # glitch-2026-06-07-nix-flake-git-add-gotcha
 
 **Artifact:** /home/noams/nix-config/CLAUDE.md#skills  
+**Signal:** user_correction  
 **Fix type:** escalate-out-of-instructions  **Confidence:** medium  **Date:** 2026-06-07
 
 ## Diagnosis

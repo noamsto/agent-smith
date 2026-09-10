@@ -1,6 +1,7 @@
 # glitch-2026-06-07-read-before-edit-retry
 
 **Artifact:** /home/noams/Data/git/factify/mono/CLAUDE.md  
+**Signal:** retry  
 **Fix type:** escalate-out-of-instructions  **Confidence:** medium  **Date:** 2026-06-07
 
 ## Diagnosis

@@ -1,6 +1,7 @@
 # glitch-2026-06-07-edit-before-read-tool-error
 
 **Artifact:** /home/noams/Data/git/factify/mono/.worktrees/eng-6037-retire-document-sharing-slice-from-factapi/CLAUDE.md  
+**Signal:** tool_error  
 **Fix type:** escalate-out-of-instructions  **Confidence:** medium  **Date:** 2026-06-07
 
 ## Diagnosis

@@ -1,6 +1,7 @@
 # glitch-2026-06-07-claudemd-redirect-cant-carry-corrections
 
 **Artifact:** /home/noams/Data/git/factify/mono/.worktrees/chore-nango-coding-agent-skill/CLAUDE.md  
+**Signal:** user_correction  
 **Fix type:** escalate-out-of-instructions  **Confidence:** medium  **Date:** 2026-06-07
 
 ## Diagnosis

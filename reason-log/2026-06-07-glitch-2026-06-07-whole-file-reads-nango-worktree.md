@@ -1,6 +1,7 @@
 # glitch-2026-06-07-whole-file-reads-nango-worktree
 
 **Artifact:** /home/noams/Data/git/factify/mono/.worktrees/chore-nango-coding-agent-skill/CLAUDE.md#reading-code  
+**Signal:** inefficiency  
 **Fix type:** add  **Confidence:** medium  **Date:** 2026-06-07
 
 ## Diagnosis

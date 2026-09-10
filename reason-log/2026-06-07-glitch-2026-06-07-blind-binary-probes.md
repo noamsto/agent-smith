@@ -1,6 +1,7 @@
 # glitch-2026-06-07-blind-binary-probes
 
 **Artifact:** /home/noams/Data/git/noamsto/lazytmux/CLAUDE.md#build-and-test  
+**Signal:** tool_error  
 **Fix type:** add  **Confidence:** medium  **Date:** 2026-06-07
 
 ## Diagnosis

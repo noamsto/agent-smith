@@ -1,6 +1,7 @@
 # glitch-2026-06-04-skeleton-first-read-ignored
 
 **Artifact:** /home/noams/.claude/CLAUDE.md#reading-code-skeleton-first  
+**Signal:** inefficiency  
 **Fix type:** escalate-out-of-instructions  **Confidence:** high  **Date:** 2026-06-04
 
 ## Diagnosis

@@ -1,6 +1,7 @@
 # glitch-2026-06-07-claudemd-redirect-stub-no-correction-anchor
 
 **Artifact:** /home/noams/Data/git/factify/mono/CLAUDE.md  
+**Signal:** user_correction  
 **Fix type:** add  **Confidence:** medium  **Date:** 2026-06-07
 
 ## Diagnosis
