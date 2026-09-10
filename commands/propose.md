@@ -52,12 +52,18 @@ skill (Skill tool) first.
      treat that as refuted (default-drop on unverified) and drop the proposal too.
      Fold any `caveats` from an `upheld` verdict into the kept proposal's
      `reason_log` so they ride into the PR.
+   - `verdict: unroutable` (diagnosis upheld, but no instruction-file edit can carry
+     the fix) is **not** a drop: keep both `p-<i>.json` and `v-<i>.json` so assembly
+     escalates the finding as an issue instead of losing it.
    - Record every dropped proposal (id + skeptic `reason`) for the report — surface
      them, never silently discard.
-4. `analyst assemble --proposals-dir $PROPOSALS_DIR --out proposals.json --reason-log-dir reason-log`
-   (Pass `--date <today>` only if needed; default is today.)
-5. Report the assembled proposals (id, fix_type, confidence) AND the proposals the
-   skeptic refuted (id + reason). This phase is review-only — no edits, no PRs.
+4. `analyst assemble --proposals-dir $PROPOSALS_DIR --out proposals.json --reason-log-dir reason-log --file-issues`
+   — `--file-issues` opens one agent-smith issue per `unroutable` proposal (deduped
+   against the reason-log, so a finding is filed once, not once per run); drop the
+   flag for a dry run. (Pass `--date <today>` only if needed; default is today.)
+5. Report the assembled proposals (id, fix_type, confidence), the proposals the
+   skeptic refuted (id + reason), and any `unroutable` escalations (id + issue link).
+   This phase is review-only — no edits, no PRs.
 
 Finally, print the exact pasteable follow-up so `apply` targets this run's dir, not a
 stale one: `echo "next: /agent-smith:apply $PROPOSALS_DIR"`. The apply phase defaults

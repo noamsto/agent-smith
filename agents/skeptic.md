@@ -51,7 +51,11 @@ line, NOT the JSON and NOT prose (see "Output" below).
    judge the proposal on the on-disk artifact evidence alone — an unreadable cluster
    file is never evidence against the proposal.
 5. Return `refuted` (with a one-line `reason` naming the contradicting evidence) or
-   `upheld` (optionally with `caveats`). **Default to `refuted` when the evidence
+   `upheld` (optionally with `caveats`). Return `unroutable` — **not** `refuted` —
+   when the diagnosis itself verifies on disk but no instruction-file edit can carry
+   the fix: there is no failing prose rule at the artifact, or the fix belongs in
+   agent-smith's own source. A `refuted` verdict drops the finding; `unroutable`
+   escalates it as an issue instead. **Default to `refuted` when the evidence
    for the diagnosis is weak or unverified** — when you could not resolve an include,
    could not find the rule the proposal describes, or the windows do not clearly
    support the claim. A wrong PR is worse than a missed fix.
@@ -82,7 +86,7 @@ prose verdict would flood its context. Format:
 
 {
   "proposal_id": "<the proposal's id>",
-  "verdict": "<refuted|upheld>",
+  "verdict": "<refuted|upheld|unroutable>",
   "reason": "<one line: the on-disk evidence that refutes or upholds the diagnosis>",
   "caveats": "<optional: a concern that doesn't refute but should ride into the PR>"
 }

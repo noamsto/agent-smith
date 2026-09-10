@@ -90,6 +90,8 @@ func runAssemble(args []string) {
 	out := fs.String("out", "proposals.json", "output proposals file")
 	reasonLog := fs.String("reason-log-dir", "reason-log", "append-only reason-log directory")
 	date := fs.String("date", "", "ISO date for reason-log filenames (default: today)")
+	fileIssues := fs.Bool("file-issues", false, "file a GitHub issue for each proposal the skeptic marked unroutable")
+	selfRepo := fs.String("self-repo", "noamsto/agent-smith", "repo that receives unroutable escalations")
 	_ = fs.Parse(args)
 
 	d := *date
@@ -100,6 +102,8 @@ func runAssemble(args []string) {
 	for _, e := range errs {
 		fmt.Fprintln(os.Stderr, "skip:", e)
 	}
+	verdicts := analyst.LoadVerdicts(*dir)
+	props, unroutable := analyst.SplitUnroutable(props, verdicts)
 	if err := analyst.WriteProposals(props, *out); err != nil {
 		fmt.Fprintln(os.Stderr, "analyst assemble:", err)
 		os.Exit(1)
@@ -111,4 +115,21 @@ func runAssemble(args []string) {
 	}
 	fmt.Printf("wrote %d proposals to %s, %d new reason-log entries (%d skipped inputs)\n",
 		len(props), *out, n, len(errs))
+
+	var filer analyst.IssueFiler
+	if *fileIssues {
+		filer = analyst.GhIssueFiler(*selfRepo)
+	}
+	escalations, err := analyst.Escalate(unroutable, verdicts, *reasonLog, d, filer)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "analyst assemble:", err)
+		os.Exit(1)
+	}
+	for _, e := range escalations {
+		if e.Skipped != "" {
+			fmt.Printf("unroutable %s: no issue filed (%s)\n", e.ID, e.Skipped)
+			continue
+		}
+		fmt.Printf("unroutable %s: filed %s\n", e.ID, e.IssueURL)
+	}
 }
