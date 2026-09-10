@@ -1,0 +1,6 @@
+{"type":"assistant","sessionId":"m1","uuid":"a1","timestamp":"2026-05-04T10:00:00Z","cwd":"/home/noams/p","message":{"role":"assistant","content":[{"type":"tool_use","id":"y1","name":"Skill","input":{"skill":"commit"}}]}}
+{"type":"user","isMeta":true,"sessionId":"m1","uuid":"u1","timestamp":"2026-05-04T10:00:01Z","cwd":"/home/noams/p","message":{"role":"user","content":"Never guess. If the output is wrong, stop and revert; do not retry blindly."}}
+{"type":"assistant","sessionId":"m1","uuid":"a2","timestamp":"2026-05-04T10:00:02Z","cwd":"/home/noams/p","message":{"role":"assistant","content":[{"type":"tool_use","id":"y2","name":"Bash","input":{"command":"git status"}}]}}
+{"type":"user","isMeta":true,"sessionId":"m1","uuid":"u2","timestamp":"2026-05-04T10:00:03Z","cwd":"/home/noams/p","message":{"role":"user","content":[{"type":"text","text":"<command-name>/commit</command-name> no incorrect output; undo nothing"}]}}
+{"type":"assistant","sessionId":"m1","uuid":"a3","timestamp":"2026-05-04T10:00:04Z","cwd":"/home/noams/p","message":{"role":"assistant","content":[{"type":"tool_use","id":"y3","name":"Edit","input":{"file_path":"/home/noams/p/x.go"}}]}}
+{"type":"user","sessionId":"m1","uuid":"u3","timestamp":"2026-05-04T10:00:05Z","cwd":"/home/noams/p","message":{"role":"user","content":"no, that's wrong, revert that"}}

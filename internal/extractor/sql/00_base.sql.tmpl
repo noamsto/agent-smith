@@ -29,6 +29,7 @@ SELECT j->>'type'                      AS type,
        j->>'timestamp'                 AS ts,
        j->>'cwd'                       AS cwd,
        COALESCE((j->>'isSidechain') = 'true', false) AS is_sidechain,
+       COALESCE((j->>'isMeta') = 'true', false)      AS is_meta,
        j->'message'                    AS message,
        j->'toolUseResult'              AS tur,
        filename,
@@ -69,20 +70,23 @@ WITH g AS (
 )
 SELECT g.session_id, g.turn, g.ts,
        c.value->>'tool_use_id'              AS tuid,
-       (c.value->>'is_error') = 'true'      AS is_error,
+       COALESCE((c.value->>'is_error') = 'true', false) AS is_error,
        COALESCE((g.tur->'file'->>'totalLines')::BIGINT,
                 (g.tur->'file'->>'numLines')::BIGINT, 0) AS total_lines
 FROM g, unnest(g.blocks) AS c(value)
 WHERE c.value->>'type' = 'tool_result';
 
 -- 5) Human user text (handles both string- and array-form content).
+-- isMeta records are harness-injected (skill bodies, slash-command expansions),
+-- not human turns; they are long and negation-rich, so they falsely match the
+-- correction regex. Absent isMeta means "not meta", hence the NULL-safe is_meta.
 CREATE OR REPLACE TEMP TABLE user_text AS
 WITH g AS (
   SELECT session_id, turn, ts,
          CASE WHEN json_type(message->'content') = 'ARRAY'
               THEN CAST(message->'content' AS JSON[])
               ELSE CAST('[]' AS JSON[]) END AS blocks
-  FROM rec WHERE type = 'user'
+  FROM rec WHERE type = 'user' AND NOT is_meta
 ),
 arr AS (
   SELECT g.session_id, g.turn, any_value(g.ts) AS ts,
@@ -94,7 +98,7 @@ arr AS (
 str AS (
   SELECT session_id, turn, ts, message->>'content' AS text
   FROM rec
-  WHERE type = 'user' AND json_type(message->'content') = 'VARCHAR'
+  WHERE type = 'user' AND NOT is_meta AND json_type(message->'content') = 'VARCHAR'
 )
 SELECT session_id, turn, ts, text FROM arr
 UNION ALL

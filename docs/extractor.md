@@ -37,8 +37,8 @@ nix build .#default
 |--------|-----------|------------|
 | `inefficiency` | whole-file Read (no offset/limit) of a file >= `LargeFileLines` (300) | by line count |
 | `tool_error` | a tool_result with `is_error=true` | medium |
-| `retry` | identical tool+input within `RetryWindowTurns` (5) turns | low |
-| `user_correction` | negation/interruption text within `CorrectionLookback` (2) turns after a tool_use | medium |
+| `retry` | identical tool+input within `RetryWindowTurns` (5) turns, the earlier attempt errored, and no successful `Read` of the same file in between | low |
+| `user_correction` | negation/interruption text in a non-`isMeta` user turn within `CorrectionLookback` (2) turns after a tool_use | medium |
 
 `repeated_guidance` is NOT produced here — the analyst emits it by clustering
 corrections across >=3 sessions. `orchestrator_disagreement` is **deferred** — see

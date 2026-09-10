@@ -30,6 +30,32 @@ func TestUserCorrection(t *testing.T) {
 	}
 }
 
+func TestUserCorrectionSkipsMetaTurns(t *testing.T) {
+	cfg := testConfig(t, "user_meta", "user_correction")
+	if err := Run(context.Background(), cfg); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	c := countBySignal(t, cfg.OutDB)
+	// Two isMeta records (string- and array-form) carry correction-like wording
+	// but are harness-injected; only the human turn 6 counts.
+	if c["user_correction"] != 1 {
+		t.Fatalf("expected 1 user_correction incident, got %d", c["user_correction"])
+	}
+}
+
+func TestRetryExcludesEditPreconditionRecovery(t *testing.T) {
+	cfg := testConfig(t, "retry_edit_recovery", "tool_error")
+	if err := Run(context.Background(), cfg); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	c := countBySignal(t, cfg.OutDB)
+	// e1 re-issues the Edit after a successful Read of the same file -> recovery.
+	// e2 re-issues it blind -> exactly 1 retry.
+	if c["retry"] != 1 {
+		t.Fatalf("expected exactly 1 retry (only the blind repeat), got %d", c["retry"])
+	}
+}
+
 func TestRetryRequiresPriorError(t *testing.T) {
 	cfg := testConfig(t, "retry", "tool_error")
 	if err := Run(context.Background(), cfg); err != nil {
