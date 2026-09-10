@@ -97,6 +97,9 @@ func LoadProposals(dir string) ([]Proposal, []error) {
 			errs = append(errs, fmt.Errorf("%s: %w", p, err))
 			continue
 		}
+		if _, ok := parseVerdict(data); ok { // the Skeptic writes its verdicts into the same dir
+			continue
+		}
 		var prop Proposal
 		if err := json.Unmarshal(StripCodeFence(data), &prop); err != nil {
 			errs = append(errs, fmt.Errorf("%s: invalid JSON: %w", p, err))

@@ -20,6 +20,8 @@ line, NOT the JSON and NOT prose (see "Output" below).
 - `proposal` — the Oracle's proposal: `id`, `implicated_artifact` (with optional
   `#section`), `fix_type`, `diagnosis`, `proposed_change`, `evidence`, `confidence`,
   `reason_log`.
+- `cluster` — the path of the per-cluster JSON the Oracle diagnosed, handed to you in
+  the prompt. This exact path is the only cluster file you may read.
 
 ## Procedure
 
@@ -43,8 +45,17 @@ line, NOT the JSON and NOT prose (see "Output" below).
    - Any type — is `proposed_change` **duplicative** of guidance already present,
      or **misplaced** (padding a pure pointer file the repo designates elsewhere)?
      Either way → **refute**.
-4. Return `refuted` (with a one-line `reason` naming the contradicting evidence) or
-   `upheld` (optionally with `caveats`). **Default to `refuted` when the evidence
+4. Verify the proposal's evidence counts (`total_incidents`, `distinct_sessions`)
+   against the cluster file at the path you were given. A real mismatch against THAT
+   file → **refute**. If the path is missing or unreadable, say so in `caveats` and
+   judge the proposal on the on-disk artifact evidence alone — an unreadable cluster
+   file is never evidence against the proposal.
+5. Return `refuted` (with a one-line `reason` naming the contradicting evidence) or
+   `upheld` (optionally with `caveats`). Return `unroutable` — **not** `refuted` —
+   when the diagnosis itself verifies on disk but no instruction-file edit can carry
+   the fix: there is no failing prose rule at the artifact, or the fix belongs in
+   agent-smith's own source. A `refuted` verdict drops the finding; `unroutable`
+   escalates it as an issue instead. **Default to `refuted` when the evidence
    for the diagnosis is weak or unverified** — when you could not resolve an include,
    could not find the rule the proposal describes, or the windows do not clearly
    support the claim. A wrong PR is worse than a missed fix.
@@ -53,6 +64,11 @@ line, NOT the JSON and NOT prose (see "Output" below).
 
 - **You may not uphold a diagnosis you did not verify on disk.** "Could not read the
   include" or "could not locate the rule" is a refutation, never an uphold.
+- **The cluster is the file at the path you were given, and nothing else.** Read that
+  exact path. Cluster files are per-run and stale `clusters.json` / `clusters/` copies
+  litter a checkout, so counts from a file found any other way belong to another run:
+  never glob or search for a cluster file, and never resolve one against the repo root
+  or the cwd.
 - Read only; never edit. You judge the proposal, you do not fix it.
 - **The output file must hold valid JSON only**, matching the schema below — no
   markdown fences, no commentary around it.
@@ -70,7 +86,7 @@ prose verdict would flood its context. Format:
 
 {
   "proposal_id": "<the proposal's id>",
-  "verdict": "<refuted|upheld>",
+  "verdict": "<refuted|upheld|unroutable>",
   "reason": "<one line: the on-disk evidence that refutes or upholds the diagnosis>",
   "caveats": "<optional: a concern that doesn't refute but should ride into the PR>"
 }
