@@ -400,7 +400,6 @@ func TestClusterUncappedKeepsAllIncidents(t *testing.T) {
 	}
 }
 
-
 func TestClusterRecencyColumns(t *testing.T) {
 	// Corpus newest active day = 2026-06-20. With staleDays=3 the live window's 3
 	// active days are 06-20/06-19/06-18, so live_cutoff = 2026-06-18 (left edge
@@ -455,7 +454,7 @@ func TestRankClusters(t *testing.T) {
 	active := Cluster{ClusterID: "a", DistinctSessions: 6, RecentSessions: 6, LastSeen: "2026-06-20T00:00:00Z"}
 	backlog := Cluster{ClusterID: "b", DistinctSessions: 50, RecentSessions: 0, LastSeen: "2026-05-01T00:00:00Z"}
 
-	fleet, droppedBacklog, droppedTop := RankClusters([]Cluster{zombie, active, backlog}, 8, false)
+	fleet, droppedBacklog, _, droppedTop := RankClusters([]Cluster{zombie, active, backlog}, 8, false)
 	if len(fleet) != 2 {
 		t.Fatalf("fleet = %d clusters, want 2 (backlog excluded)", len(fleet))
 	}
@@ -468,14 +467,14 @@ func TestRankClusters(t *testing.T) {
 
 	// n <= 0 keeps every selected (live) cluster — the uncapped invariant.
 	for _, n := range []int{0, -1} {
-		keepAll, db, dt := RankClusters([]Cluster{zombie, active, backlog}, n, false)
+		keepAll, db, _, dt := RankClusters([]Cluster{zombie, active, backlog}, n, false)
 		if len(keepAll) != 2 || db != 1 || dt != 0 {
 			t.Errorf("n=%d: len=%d droppedBacklog=%d droppedTop=%d, want 2/1/0", n, len(keepAll), db, dt)
 		}
 	}
 
 	// includeStale ranks all by lifetime breadth — backlog re-enters, ranked by distinct_sessions.
-	all, db2, dt2 := RankClusters([]Cluster{zombie, active, backlog}, 8, true)
+	all, db2, _, dt2 := RankClusters([]Cluster{zombie, active, backlog}, 8, true)
 	if len(all) != 3 || db2 != 0 || dt2 != 0 {
 		t.Fatalf("includeStale: len=%d droppedBacklog=%d droppedTop=%d, want 3/0/0", len(all), db2, dt2)
 	}
@@ -484,7 +483,7 @@ func TestRankClusters(t *testing.T) {
 	}
 
 	// the cap drops lowest-ranked live clusters and reports the count.
-	capped, _, dt3 := RankClusters([]Cluster{zombie, active}, 1, false)
+	capped, _, _, dt3 := RankClusters([]Cluster{zombie, active}, 1, false)
 	if len(capped) != 1 || dt3 != 1 || capped[0].ClusterID != "a" {
 		t.Errorf("cap: len=%d droppedTop=%d first=%q, want 1/1/a", len(capped), dt3, capped[0].ClusterID)
 	}
@@ -492,9 +491,19 @@ func TestRankClusters(t *testing.T) {
 	// tie on recent + lifetime falls back to last_seen (descending), so the fresher one leads.
 	older := Cluster{ClusterID: "old", DistinctSessions: 5, RecentSessions: 5, LastSeen: "2026-06-01T00:00:00Z"}
 	newer := Cluster{ClusterID: "new", DistinctSessions: 5, RecentSessions: 5, LastSeen: "2026-06-15T00:00:00Z"}
-	tied, _, _ := RankClusters([]Cluster{older, newer}, 8, false)
+	tied, _, _, _ := RankClusters([]Cluster{older, newer}, 8, false)
 	if tied[0].ClusterID != "new" {
 		t.Errorf("last_seen tiebreak: fresher cluster should lead, got %q first", tied[0].ClusterID)
+	}
+
+	// A cluster still stuck on an unresolvable pointer file has no editable artifact,
+	// so it leaves the fleet in both modes rather than burning an Oracle dispatch.
+	pointer := Cluster{ClusterID: "p", DistinctSessions: 9, RecentSessions: 9, UnresolvedImport: "AGENTS.md"}
+	for _, stale := range []bool{false, true} {
+		got, _, du, _ := RankClusters([]Cluster{active, pointer}, 8, stale)
+		if len(got) != 1 || got[0].ClusterID != "a" || du != 1 {
+			t.Errorf("includeStale=%v: fleet=%d droppedUnresolved=%d, want 1/1", stale, len(got), du)
+		}
 	}
 }
 

@@ -12,7 +12,8 @@ import (
 // and asserts the safe-wide-mine acceptance properties end-to-end.
 //
 // Corpus frontier: 2026-06-20. With staleDays=7 the active days are:
-//   05-01, 05-02, 05-03, 06-14, 06-15, 06-16, 06-17, 06-18, 06-19, 06-20
+//
+//	05-01, 05-02, 05-03, 06-14, 06-15, 06-16, 06-17, 06-18, 06-19, 06-20
 //
 // The 7 most recent active days are 06-14..06-20, so live_cutoff = 2026-06-14.
 // May incidents fall outside the window (< 06-14) and do NOT count as recent.
@@ -122,7 +123,7 @@ func TestClusterPipelineEndToEnd(t *testing.T) {
 	}
 
 	// --- Phase 2: RankClusters (live mode, excludes backlog) ---
-	fleet, droppedBacklog, droppedTop := RankClusters(clusters, 8, false)
+	fleet, droppedBacklog, _, droppedTop := RankClusters(clusters, 8, false)
 	if droppedBacklog != 1 {
 		t.Errorf("droppedBacklog = %d, want 1 (OLD.md excluded)", droppedBacklog)
 	}
@@ -167,7 +168,7 @@ func TestClusterPipelineEndToEnd(t *testing.T) {
 	}
 
 	// --- Phase 3: RankClusters (backlog mode, includes everything) ---
-	allFleet, droppedBacklog2, _ := RankClusters(clusters, 8, true)
+	allFleet, droppedBacklog2, _, _ := RankClusters(clusters, 8, true)
 	if droppedBacklog2 != 0 {
 		t.Errorf("backlog mode droppedBacklog = %d, want 0 (all included)", droppedBacklog2)
 	}

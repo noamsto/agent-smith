@@ -67,9 +67,12 @@ func runCluster(args []string) {
 	for _, c := range skipped {
 		fmt.Fprintf(os.Stderr, "skip %s: a prior proposal was closed/rejected (reason-log)\n", c.ClusterID)
 	}
-	fleet, droppedBacklog, droppedTop := analyst.RankClusters(clusters, *top, *includeStale)
+	fleet, droppedBacklog, droppedUnresolved, droppedTop := analyst.RankClusters(clusters, *top, *includeStale)
 	if droppedBacklog > 0 {
-		fmt.Fprintf(os.Stderr, "recency: %d backlog cluster(s) excluded — no incidents in the last %d active days; --include-stale to rank them\n", droppedBacklog, *staleDays)
+		fmt.Fprintf(os.Stderr, "recency: %d likely-resolved cluster(s) excluded — no incidents in the last %d active days; --include-stale to rank them\n", droppedBacklog, *staleDays)
+	}
+	if droppedUnresolved > 0 {
+		fmt.Fprintf(os.Stderr, "%d cluster(s) excluded: the artifact is a redirect-only pointer file whose @import could not be resolved\n", droppedUnresolved)
 	}
 	if droppedTop > 0 {
 		cutoff := fleet[len(fleet)-1]

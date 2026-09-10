@@ -39,7 +39,10 @@ type Cluster struct {
 	TotalIncidents   int             `json:"total_incidents"`
 	LastSeen         string          `json:"last_seen"`
 	RecentSessions   int             `json:"recent_sessions"`
-	Incidents        json.RawMessage `json:"incidents"` // JSON array of member incidents
+	LikelyResolved   bool            `json:"likely_resolved"`   // no in-window activity: the behavior stopped occurring
+	RedirectFrom     string          `json:"redirect_from"`     // pointer artifact this cluster was re-attributed away from
+	UnresolvedImport string          `json:"unresolved_import"` // pointer artifact's @import that could not be resolved
+	Incidents        json.RawMessage `json:"incidents"`         // JSON array of member incidents
 }
 
 // clusterRow is the raw SQL projection before Go reads artifact files.
@@ -152,6 +155,9 @@ func clusterRows(ctx context.Context, db string, minSessions, maxIncidents, stal
 // roots), then reads each artifact's current content from disk. Clusters whose
 // canonical artifact no longer exists — a deleted worktree, a removed file — are
 // dropped; dropped is how many were dropped, for the caller to surface.
+// A pointer artifact — one whose whole content is a redirect like "See @AGENTS.md" —
+// is re-attributed to its import target, since the pointer itself can never be
+// usefully edited; an unresolvable target is marked instead.
 func ClusterDB(ctx context.Context, db string, minSessions, maxIncidents, staleDays int) (clusters []Cluster, dropped int, err error) {
 	rows, err := clusterRows(ctx, db, minSessions, maxIncidents, staleDays)
 	if err != nil {
@@ -167,17 +173,30 @@ func ClusterDB(ctx context.Context, db string, minSessions, maxIncidents, staleD
 			}
 			return nil, 0, fmt.Errorf("read artifact %s: %w", r.Artifact, err)
 		}
-		s := truncate(string(data), maxArtifactContentBytes)
+		artifact, content := r.Artifact, string(data)
+		var redirectFrom, unresolvedImport string
+		if imp, ok := redirectImport(content); ok {
+			target := resolveImport(r.Artifact, imp)
+			if tdata, terr := os.ReadFile(target); terr == nil {
+				redirectFrom, artifact, content = r.Artifact, target, string(tdata)
+			} else {
+				unresolvedImport = imp
+			}
+		}
+		s := truncate(content, maxArtifactContentBytes)
 		clusters = append(clusters, Cluster{
-			ClusterID:        r.SignalType + "::" + r.Artifact,
+			ClusterID:        r.SignalType + "::" + artifact,
 			SignalType:       r.SignalType,
-			Artifact:         r.Artifact,
+			Artifact:         artifact,
 			ArtifactContent:  &s,
 			ArtifactExists:   true,
 			DistinctSessions: r.DistinctSessions,
 			TotalIncidents:   r.TotalIncidents,
 			LastSeen:         r.LastSeen,
 			RecentSessions:   r.RecentSessions,
+			LikelyResolved:   r.RecentSessions == 0,
+			RedirectFrom:     redirectFrom,
+			UnresolvedImport: unresolvedImport,
 			Incidents:        capWindows(r.Incidents),
 		})
 	}
@@ -189,15 +208,23 @@ func ClusterDB(ctx context.Context, db string, minSessions, maxIncidents, staleD
 // intensity, then lifetime breadth, then recency. Backlog clusters (no in-window
 // activity) are excluded from the default fleet and reported via droppedBacklog —
 // never deleted; pass includeStale to rank every cluster by lifetime breadth (the
-// historical-backlog mode). n <= 0 keeps all selected clusters. droppedTop is how
-// many in-fleet candidates the cap dropped.
-func RankClusters(clusters []Cluster, n int, includeStale bool) (fleet []Cluster, droppedBacklog, droppedTop int) {
-	ranked := make([]Cluster, len(clusters))
-	copy(ranked, clusters)
+// historical-backlog mode). Clusters still pointing at an unresolvable pointer
+// artifact are excluded from both modes and reported via droppedUnresolved: there
+// is no file the Oracle could act on. n <= 0 keeps all selected clusters.
+// droppedTop is how many in-fleet candidates the cap dropped.
+func RankClusters(clusters []Cluster, n int, includeStale bool) (fleet []Cluster, droppedBacklog, droppedUnresolved, droppedTop int) {
+	ranked := make([]Cluster, 0, len(clusters))
+	for _, c := range clusters {
+		if c.UnresolvedImport != "" {
+			droppedUnresolved++
+			continue
+		}
+		ranked = append(ranked, c)
+	}
 	if includeStale {
 		sort.SliceStable(ranked, func(i, j int) bool { return lessBacklog(ranked[i], ranked[j]) })
 		fleet, droppedTop = cut(ranked, n)
-		return fleet, 0, droppedTop
+		return fleet, 0, droppedUnresolved, droppedTop
 	}
 	var live, backlog []Cluster
 	for _, c := range ranked {
@@ -209,7 +236,7 @@ func RankClusters(clusters []Cluster, n int, includeStale bool) (fleet []Cluster
 	}
 	sort.SliceStable(live, func(i, j int) bool { return lessLive(live[i], live[j]) })
 	fleet, droppedTop = cut(live, n)
-	return fleet, len(backlog), droppedTop
+	return fleet, len(backlog), droppedUnresolved, droppedTop
 }
 
 func cut(ranked []Cluster, n int) (kept []Cluster, dropped int) {
@@ -296,6 +323,9 @@ type ClusterIndexEntry struct {
 	TotalIncidents   int    `json:"total_incidents"`
 	LastSeen         string `json:"last_seen"`
 	RecentSessions   int    `json:"recent_sessions"`
+	LikelyResolved   bool   `json:"likely_resolved"`
+	RedirectFrom     string `json:"redirect_from"`
+	UnresolvedImport string `json:"unresolved_import"`
 	SampledIncidents int    `json:"sampled_incidents"`
 	File             string `json:"file"` // path to the per-cluster JSON, relative to the index
 }
@@ -341,6 +371,9 @@ func WriteClusters(clusters []Cluster, indexPath string) error {
 			TotalIncidents:   c.TotalIncidents,
 			LastSeen:         c.LastSeen,
 			RecentSessions:   c.RecentSessions,
+			LikelyResolved:   c.LikelyResolved,
+			RedirectFrom:     c.RedirectFrom,
+			UnresolvedImport: c.UnresolvedImport,
 			SampledIncidents: countIncidents(c.Incidents),
 			File:             rel,
 		})
@@ -361,6 +394,47 @@ func countIncidents(raw json.RawMessage) int {
 		return 0
 	}
 	return len(arr)
+}
+
+// redirectLineRe matches a whole line that is nothing but an @import, optionally
+// introduced by a pointer verb: "See @AGENTS.md", "@~/.claude/AGENTS.md".
+var redirectLineRe = regexp.MustCompile(`(?i)^(?:see|read|follow|use|refer to)?\s*@(\S+?)[.,;:]*$`)
+
+// redirectImport returns the import path an artifact redirects to when the file
+// has no substantive content of its own — headings, blank lines and HTML comments
+// aside, exactly one line, and that line is the import. Anything else (a second
+// import, prose alongside the import) means the file is worth editing in place.
+func redirectImport(content string) (string, bool) {
+	target := ""
+	for _, line := range strings.Split(content, "\n") {
+		t := strings.TrimSpace(line)
+		if t == "" || strings.HasPrefix(t, "#") || strings.HasPrefix(t, "<!--") {
+			continue
+		}
+		m := redirectLineRe.FindStringSubmatch(t)
+		if m == nil || target != "" {
+			return "", false
+		}
+		target = m[1]
+	}
+	return target, target != ""
+}
+
+// resolveImport resolves an @import against the importing file's directory,
+// expanding a leading ~. An unexpandable ~ yields "" so the caller treats the
+// import as unresolved rather than probing a bogus relative path.
+func resolveImport(importer, imp string) string {
+	if strings.HasPrefix(imp, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return ""
+		}
+		return filepath.Join(home, imp[2:])
+	}
+	if filepath.IsAbs(imp) {
+		return imp
+	}
+	return filepath.Join(filepath.Dir(importer), imp)
 }
 
 // Worktree-path canonicalization mirrored from clusterSQL's regexes — KEEP IN SYNC.
