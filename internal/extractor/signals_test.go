@@ -110,3 +110,28 @@ func TestFullMineKeepsBothTurnsDespiteTimestamplessRecord(t *testing.T) {
 		t.Fatalf("expected 2 user_correction incidents without --since, got %d", c["user_correction"])
 	}
 }
+
+// Two families of agent-generated text arrive as ordinary "user" turns and match
+// the correction regex: subagent dispatch prompts (isSidechain, both string- and
+// array-form content) and teammate messages delivered into the parent session
+// (structurally identical to a human turn, so keyed on the harness's
+// `<teammate-message` tag). agent-smith's own fan-out writes both, so without
+// this the loop mines its own exhaust.
+func TestUserCorrectionSkipsAgentGeneratedTurns(t *testing.T) {
+	cfg := testConfig(t, "user_sidechain", "user_correction")
+	if err := Run(context.Background(), cfg); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	c := countBySignal(t, cfg.OutDB)
+	// Two sidechain dispatch prompts (string- and array-form) and one teammate
+	// message, all regex-matching, plus one human turn — only the human counts.
+	if c["user_correction"] != 1 {
+		t.Fatalf("expected 1 user_correction incident, got %d", c["user_correction"])
+	}
+	rows := query(t, cfg.OutDB,
+		`SELECT json_extract_string(detail,'$.text') AS text
+		 FROM incidents WHERE signal_type='user_correction';`)
+	if len(rows) != 1 || rows[0]["text"] != "no, that is wrong, revert that" {
+		t.Fatalf("wrong turn kept: %v", rows)
+	}
+}
