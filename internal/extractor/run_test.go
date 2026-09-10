@@ -144,3 +144,54 @@ func TestBasePipelineBuildsDerivedTables(t *testing.T) {
 		t.Fatalf("expected 0 incidents from base alone, got %d", n)
 	}
 }
+
+func TestReadCoverageSpansHistory(t *testing.T) {
+	db := filepath.Join(t.TempDir(), "incidents.db")
+	ddl := `CREATE TABLE incidents (
+	  incident_id VARCHAR PRIMARY KEY, session_id VARCHAR, project VARCHAR, ts VARCHAR,
+	  signal_type VARCHAR, implicated_artifact VARCHAR, candidates JSON, "window" JSON,
+	  confidence VARCHAR, detail JSON);`
+	ins := `INSERT INTO incidents VALUES
+	  (md5('s1:1:retry'),'s1','/p','2026-05-07T10:00:00Z','retry','/c.md',
+	   '[]'::JSON,'[]'::JSON,'high','{}'::JSON),
+	  (md5('s2:1:retry'),'s2','/p','2026-09-10T11:00:00Z','retry','/c.md',
+	   '[]'::JSON,'[]'::JSON,'high','{}'::JSON),
+	  (md5('s2:2:retry'),'s2','/p','2026-08-11T09:00:00Z','retry','/c.md',
+	   '[]'::JSON,'[]'::JSON,'high','{}'::JSON);`
+	ctx := context.Background()
+	if _, err := runDuckDB(ctx, db, ddl+ins); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	got, err := ReadCoverage(ctx, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Coverage{First: "2026-05-07", Last: "2026-09-10", Incidents: 3, Sessions: 2}
+	if got != want {
+		t.Fatalf("coverage = %+v, want %+v", got, want)
+	}
+	if s := got.String(); s != "history: 2026-05-07 → 2026-09-10 (3 incidents, 2 sessions)" {
+		t.Fatalf("banner = %q", s)
+	}
+}
+
+func TestReadCoverageEmptyDB(t *testing.T) {
+	db := filepath.Join(t.TempDir(), "incidents.db")
+	ddl := `CREATE TABLE incidents (
+	  incident_id VARCHAR PRIMARY KEY, session_id VARCHAR, project VARCHAR, ts VARCHAR,
+	  signal_type VARCHAR, implicated_artifact VARCHAR, candidates JSON, "window" JSON,
+	  confidence VARCHAR, detail JSON);`
+	ctx := context.Background()
+	if _, err := runDuckDB(ctx, db, ddl); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	got, err := ReadCoverage(ctx, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Incidents != 0 || got.String() != "history: empty" {
+		t.Fatalf("empty db coverage = %+v (%q)", got, got.String())
+	}
+}
