@@ -1,6 +1,7 @@
 # glitch-2026-06-07-worktree-bash-cwd-and-edit-before-read
 
 **Artifact:** /home/noams/Data/git/factify/mono/.worktrees/eng-5883-inbound-slack-impl/CLAUDE.md  
+**Signal:** tool_error  
 **Fix type:** escalate-out-of-instructions  **Confidence:** medium  **Date:** 2026-06-07
 
 ## Diagnosis

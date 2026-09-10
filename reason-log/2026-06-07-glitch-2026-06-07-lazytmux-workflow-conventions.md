@@ -1,6 +1,7 @@
 # glitch-2026-06-07-lazytmux-workflow-conventions
 
 **Artifact:** /home/noams/Data/git/noamsto/lazytmux/CLAUDE.md#contribution-workflow  
+**Signal:** user_correction  
 **Fix type:** add  **Confidence:** medium  **Date:** 2026-06-07
 
 ## Diagnosis

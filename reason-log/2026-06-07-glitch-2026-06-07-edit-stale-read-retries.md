@@ -1,6 +1,7 @@
 # glitch-2026-06-07-edit-stale-read-retries
 
 **Artifact:** /home/noams/.claude/CLAUDE.md#editing-files-read-then-edit  
+**Signal:** retry  
 **Fix type:** add  **Confidence:** high  **Date:** 2026-06-07
 
 ## Diagnosis

@@ -1,5 +1,6 @@
 # agent-smith artifacts — machine-local, never committed
 incidents.db
+incidents.db.last-run
 *.duckdb
 clusters.json
 clusters/

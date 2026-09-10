@@ -1,6 +1,7 @@
 # glitch-2026-06-07-nix-config-full-file-reads
 
 **Artifact:** /home/noams/nix-config/CLAUDE.md#reading-code  
+**Signal:** inefficiency  
 **Fix type:** add  **Confidence:** high  **Date:** 2026-06-07
 
 ## Diagnosis

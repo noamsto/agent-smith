@@ -1,6 +1,7 @@
 # glitch-2026-06-07-shfmt-rewrite-stale-read-retries
 
 **Artifact:** /home/noams/Data/git/noamsto/lazytmux/CLAUDE.md#pre-commit-hooks  
+**Signal:** retry  
 **Fix type:** strengthen  **Confidence:** high  **Date:** 2026-06-07
 
 ## Diagnosis

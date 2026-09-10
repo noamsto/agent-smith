@@ -1,6 +1,7 @@
 # glitch-2026-06-07-wt-invented-flags
 
 **Artifact:** /home/noams/Data/git/factify/mono/CLAUDE.md#worktrees  
+**Signal:** tool_error  
 **Fix type:** add  **Confidence:** high  **Date:** 2026-06-07
 
 ## Diagnosis
