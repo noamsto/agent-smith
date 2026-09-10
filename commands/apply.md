@@ -85,8 +85,11 @@ one. This avoids the guaranteed conflict of N PRs all editing the same file.
    e. If every editor declined (`applied:false`), the combined diff was empty, or any
       step failed: record a **skip** with the reason and continue to the next group.
       Never abort the whole run for one bad group.
-4. After all groups: commit the reason-log link update in this repo
-   (`git add reason-log/ && git commit -m "docs(reason-log): link agent-smith PRs"`).
+4. After all groups: commit the reason-log link update **in the agent-smith checkout
+   the loop is running from** — `git -C <agent-smith checkout> add reason-log/ && git -C <agent-smith checkout> commit -m "docs(reason-log): link agent-smith PRs"`.
+   Never commit it in `$WT` or the target repo: the reason-log is agent-smith's own
+   ledger, and committing it there pollutes a product repo's default branch. If the
+   cwd is not an agent-smith checkout, leave the reason-log uncommitted and say so.
 5. Report per group: `group_id | repo | proposal ids | verify verdict | PR link or skip reason`.
    All PRs are **drafts** — tell the user to review / `nix build` / merge them at their leisure.
 

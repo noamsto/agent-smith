@@ -22,8 +22,10 @@ skill (Skill tool) first.
 
 1. Create a unique per-run input dir so concurrent runs and prior runs can't bleed:
    `RUNID="$(date +%Y%m%dT%H%M%S)-$$"; export PROPOSALS_DIR="/tmp/agent-smith-$RUNID"; mkdir -p "$PROPOSALS_DIR"`.
-   Use `$PROPOSALS_DIR` everywhere this skill previously used `/tmp/agent-smith-proposals-in`
-   (Oracle/Skeptic outputs `p-*.json` / `v-*.json`, and the `analyst assemble --proposals-dir "$PROPOSALS_DIR"` call).
+   Every path below is under `$PROPOSALS_DIR`: the Oracle/Skeptic outputs
+   (`p-*.json` / `v-*.json`) and the `analyst assemble --proposals-dir "$PROPOSALS_DIR"` call.
+   Never write into a shared, run-agnostic dir — a prior run's proposals would be
+   swept into this run's assembly and open PRs against the wrong repos.
 2. For each index entry in `clusters.json` (iterate with `jq -r '.[].file'`; each
    entry's `file` is the per-cluster JSON path relative to `clusters.json`'s dir —
    resolve it against that dir and dispatch the absolute path as `<file>`, so no
@@ -34,10 +36,12 @@ skill (Skill tool) first.
      and return only your one-line final message — not the JSON. Read the per-cluster
      file directly — do NOT pass the whole index."
    - If the Oracle errors or writes no file, log a skip and continue.
-3. **Skeptic pass — one per Oracle proposal.** A single Oracle pass turns directly
-   into human triage; an unverified inference (e.g. "no guidance exists" judged
-   without resolving `@AGENTS.md`) propagates to wrong PRs. For each `p-<i>.json`
-   the Oracle wrote, dispatch the **agent-smith:skeptic** subagent (Agent tool):
+3. **Skeptic pass — one per non-skip Oracle proposal.** A single Oracle pass turns
+   directly into human triage; an unverified inference (e.g. "no guidance exists" judged
+   without resolving `@AGENTS.md`) propagates to wrong PRs. Skip proposals
+   (`fix_type: skip`) decline outright and can never produce a PR — leave them
+   unverified. For each remaining `p-<i>.json` the Oracle wrote, dispatch the
+   **agent-smith:skeptic** subagent (Agent tool):
    "Read the proposal at `$PROPOSALS_DIR/p-<i>.json`; its cluster is at `<file>` —
    the same per-cluster path you gave the Oracle for this `<i>`, and the only cluster
    file to read. Follow your instructions to refute the proposal against the actual
