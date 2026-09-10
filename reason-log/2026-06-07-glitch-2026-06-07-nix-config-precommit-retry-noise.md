@@ -1,6 +1,7 @@
 # glitch-2026-06-07-nix-config-precommit-retry-noise
 
 **Artifact:** /home/noams/nix-config/CLAUDE.md  
+**Signal:** retry  
 **Fix type:** escalate-out-of-instructions  **Confidence:** low  **Date:** 2026-06-07
 
 ## Diagnosis

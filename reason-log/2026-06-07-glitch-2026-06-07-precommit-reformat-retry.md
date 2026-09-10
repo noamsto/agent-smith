@@ -1,6 +1,7 @@
 # glitch-2026-06-07-precommit-reformat-retry
 
 **Artifact:** /home/noams/nix-config/CLAUDE.md#gotchas  
+**Signal:** tool_error  
 **Fix type:** add  **Confidence:** medium  **Date:** 2026-06-07
 
 ## Diagnosis

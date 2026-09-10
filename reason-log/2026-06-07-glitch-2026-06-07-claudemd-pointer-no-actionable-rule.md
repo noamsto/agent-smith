@@ -1,6 +1,7 @@
 # glitch-2026-06-07-claudemd-pointer-no-actionable-rule
 
 **Artifact:** /home/noams/Data/git/factify/mono/.worktrees/eng-5883-inbound-slack-impl/CLAUDE.md  
+**Signal:** user_correction  
 **Fix type:** strengthen  **Confidence:** low  **Date:** 2026-06-07
 
 ## Diagnosis

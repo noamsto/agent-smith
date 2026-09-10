@@ -1,6 +1,7 @@
 # glitch-2026-06-07-noisy-user-correction-cluster-global-claudemd
 
 **Artifact:** /home/noams/.claude/CLAUDE.md#safe-file-deletion  
+**Signal:** user_correction  
 **Fix type:** strengthen  **Confidence:** low  **Date:** 2026-06-07
 
 ## Diagnosis

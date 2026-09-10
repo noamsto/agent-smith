@@ -1,6 +1,7 @@
 # glitch-2026-06-07-wt-flag-guessing
 
 **Artifact:** /home/noams/.claude/CLAUDE.md#git-worktrees  
+**Signal:** tool_error  
 **Fix type:** strengthen  **Confidence:** medium  **Date:** 2026-06-07
 
 ## Diagnosis

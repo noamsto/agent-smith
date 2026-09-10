@@ -1,6 +1,7 @@
 # glitch-2026-06-07-wrong-worktree-paths
 
 **Artifact:** /home/noams/Data/git/factify/mono/.worktrees/chore-nango-coding-agent-skill/CLAUDE.md  
+**Signal:** tool_error  
 **Fix type:** escalate-out-of-instructions  **Confidence:** medium  **Date:** 2026-06-07
 
 ## Diagnosis
