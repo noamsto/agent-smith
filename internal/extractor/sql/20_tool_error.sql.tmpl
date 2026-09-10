@@ -22,7 +22,8 @@ WITH events AS (
 -- retry: an identical tool+input reappears within RetryWindowTurns turns AND at
 -- least one earlier identical call in that window errored (the tool_results JOIN).
 -- Requiring a prior error excludes intentional successful re-runs (verify loops,
--- duplicate reads). NB: "turns" are rows in the combined assistant+user message
+-- duplicate reads); the NOT EXISTS below excludes Edit/Write precondition
+-- recovery. NB: "turns" are rows in the combined assistant+user message
 -- sequence (~2 rows per tool round-trip), not tool-use hops.
 WITH events AS (
   SELECT DISTINCT
@@ -47,5 +48,22 @@ WITH events AS (
    AND b.turn - a.turn <= {{.RetryWindowTurns}}
   JOIN session_meta  sm ON sm.session_id = b.session_id
   JOIN artifact_main am ON am.session_id = b.session_id
+  -- Re-issuing an identical Edit/Write after a precondition error ("File has not
+  -- been read yet" / "File has been modified since read") is the prescribed
+  -- recovery, not a glitch: the agent re-reads the target, then repeats the edit
+  -- verbatim. A successful Read of the same file between the two attempts is
+  -- that recovery shape, so it is not a retry. Tools without a file_path (Bash)
+  -- never match the correlated Read, so a blind retry still counts.
+  WHERE NOT EXISTS (
+    SELECT 1
+    FROM tool_uses rd
+    JOIN tool_results rr
+      ON rr.session_id = rd.session_id AND rr.tuid = rd.tuid AND NOT rr.is_error
+    WHERE rd.session_id = a.session_id
+      AND rd.tool = 'Read'
+      AND rd.file_path = a.file_path
+      AND rd.turn > a.turn
+      AND rd.turn < b.turn
+  )
 )
 {{template "windowed_insert" .}}
