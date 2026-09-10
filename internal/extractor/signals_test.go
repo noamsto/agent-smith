@@ -110,3 +110,45 @@ func TestFullMineKeepsBothTurnsDespiteTimestamplessRecord(t *testing.T) {
 		t.Fatalf("expected 2 user_correction incidents without --since, got %d", c["user_correction"])
 	}
 }
+
+// Without the error text in `detail`, the Oracle has to infer the failure from
+// window excerpts that mostly show other, successful results — and it gets it
+// wrong. The message the tool actually returned must ride on the incident.
+func TestToolErrorDetailCarriesErrorText(t *testing.T) {
+	cfg := testConfig(t, "tool_error", "tool_error")
+	if err := Run(context.Background(), cfg); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	rows := query(t, cfg.OutDB,
+		`SELECT json_extract_string(detail,'$.error') AS err,
+		        json_extract_string(detail,'$.tool')  AS tool
+		 FROM incidents WHERE signal_type='tool_error' ORDER BY ts;`)
+	if len(rows) != 2 {
+		t.Fatalf("expected 2 tool_error rows, got %d", len(rows))
+	}
+	for i, r := range rows {
+		if got := r["err"]; got != "No such file" {
+			t.Errorf("row %d: detail.error = %v, want %q", i, got, "No such file")
+		}
+		if r["tool"] == nil || r["tool"] == "" {
+			t.Errorf("row %d: detail.tool missing", i)
+		}
+	}
+}
+
+func TestToolErrorTextIsTruncatedToErrorChars(t *testing.T) {
+	cfg := testConfig(t, "tool_error", "tool_error")
+	cfg.ErrorChars = 4
+	if err := Run(context.Background(), cfg); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	rows := query(t, cfg.OutDB,
+		`SELECT json_extract_string(detail,'$.error') AS err
+		 FROM incidents WHERE signal_type='tool_error' LIMIT 1;`)
+	if len(rows) != 1 {
+		t.Fatalf("expected a tool_error row, got %d", len(rows))
+	}
+	if got := rows[0]["err"]; got != "No s" {
+		t.Fatalf("detail.error = %v, want %q", got, "No s")
+	}
+}

@@ -20,6 +20,7 @@ type Config struct {
 	WindowBefore int
 	WindowAfter  int
 	ExcerptChars int
+	ErrorChars   int // chars of tool-result text kept in a tool_error's detail
 
 	// inefficiency thresholds (line counts)
 	LargeFileLines int
@@ -64,6 +65,7 @@ func DefaultConfig() Config {
 		WindowBefore:       3,
 		WindowAfter:        4,
 		ExcerptChars:       300,
+		ErrorChars:         500,
 		LargeFileLines:     300,
 		MediumLines:        500,
 		HighLines:          1000,
