@@ -87,13 +87,18 @@ WHERE c.value->>'type' = 'tool_result';
 -- isMeta records are harness-injected (skill bodies, slash-command expansions),
 -- not human turns; they are long and negation-rich, so they falsely match the
 -- correction regex. Absent isMeta means "not meta", hence the NULL-safe is_meta.
+-- isSidechain records are subagent transcripts, where the "user" turn is the
+-- orchestrator's dispatch prompt ("You have IMPLEMENTATION AUTHORITY ONLY...",
+-- "READ-ONLY analysis. Repo: ..."). Those carry no isMeta, match the regex on
+-- "do not"/"only", and outnumber real corrections — and agent-smith's own
+-- fan-out writes them, so the loop would mine its own exhaust.
 CREATE OR REPLACE TEMP TABLE user_text AS
 WITH g AS (
   SELECT session_id, turn, ts,
          CASE WHEN json_type(message->'content') = 'ARRAY'
               THEN CAST(message->'content' AS JSON[])
               ELSE CAST('[]' AS JSON[]) END AS blocks
-  FROM rec WHERE type = 'user' AND NOT is_meta
+  FROM rec WHERE type = 'user' AND NOT is_meta AND NOT is_sidechain
 ),
 arr AS (
   SELECT g.session_id, g.turn, any_value(g.ts) AS ts,
@@ -105,11 +110,20 @@ arr AS (
 str AS (
   SELECT session_id, turn, ts, message->>'content' AS text
   FROM rec
-  WHERE type = 'user' AND NOT is_meta AND json_type(message->'content') = 'VARCHAR'
+  WHERE type = 'user' AND NOT is_meta AND NOT is_sidechain
+    AND json_type(message->'content') = 'VARCHAR'
 )
-SELECT session_id, turn, ts, text FROM arr
-UNION ALL
-SELECT session_id, turn, ts, text FROM str;
+SELECT session_id, turn, ts, text FROM (
+  SELECT session_id, turn, ts, text FROM arr
+  UNION ALL
+  SELECT session_id, turn, ts, text FROM str
+)
+-- Agent-to-agent messages and task notifications are delivered into the parent
+-- session as ordinary user records: isSidechain false, isMeta absent, userType
+-- external — structurally identical to a human turn. The harness-generated tags
+-- are the only discriminator, so the filter has to be on content.
+WHERE text IS NULL
+   OR (text NOT LIKE '%<teammate-message%' AND text NOT LIKE '%<task-notification>%');
 
 -- 6) Compact per-turn excerpt for window slices.
 CREATE OR REPLACE TEMP TABLE rec_text AS
