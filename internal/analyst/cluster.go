@@ -60,6 +60,8 @@ type clusterRow struct {
 // the most recent staleDays *active* corpus days (dates with >=1 incident). All
 // recency comparisons are string ops on ISO-8601 ts (sortable as text).
 // Incidents are sampled session-stratified up to maxIncidents; maxIncidents <= 0 = uncapped.
+// Within a session the sample is newest-first, so the Oracle diagnoses the behavior
+// the cluster's recency ranking is actually claiming is live.
 func clusterSQL(minSessions, maxIncidents, staleDays int) string {
 	capN := maxIncidents
 	if capN <= 0 {
@@ -97,7 +99,7 @@ ranked AS (
          row_number() OVER (
            PARTITION BY e.artifact, e.signal_type, e.session_id
            ORDER BY (CASE e.confidence WHEN 'high' THEN 3 WHEN 'medium' THEN 2 ELSE 1 END) DESC,
-                    e.ts, e.incident_id
+                    e.ts DESC, e.incident_id
          ) AS rn_in_session
   FROM exploded e
   JOIN gated g USING (artifact, signal_type)
@@ -108,7 +110,7 @@ sampled AS (
            PARTITION BY artifact, signal_type
            ORDER BY rn_in_session ASC,
                     (CASE confidence WHEN 'high' THEN 3 WHEN 'medium' THEN 2 ELSE 1 END) DESC,
-                    ts, incident_id
+                    ts DESC, incident_id
          ) AS pick
   FROM ranked
 )
