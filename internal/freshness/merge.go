@@ -17,9 +17,8 @@ const SignalType = "stale-ref"
 // LoadAdjudications reads every adj-*.json file under dir and returns the set
 // of ref ids adjudicated stale. dir == "" (no adjudication step run) yields an
 // empty, non-nil map and no errors. A dir that cannot be listed, or a file that
-// fails to read or decode, is reported in errs (naming it) and contributes
-// nothing — default-drop, since an id this run cannot vouch for must not slip
-// into "stale" by omission.
+// fails to read or decode, is reported in errs and contributes nothing
+// (default-drop).
 func LoadAdjudications(dir string) (stale map[string]bool, errs []error) {
 	stale = map[string]bool{}
 	if dir == "" {

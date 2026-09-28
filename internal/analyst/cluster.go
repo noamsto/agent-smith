@@ -134,11 +134,10 @@ ORDER BY g.recent_sessions DESC, g.distinct_sessions DESC, s.artifact, s.signal_
 		staleDays, canonicalArtifactExpr("unnest(CAST(candidates AS VARCHAR[]))"), minSessions, capN)
 }
 
-// canonicalArtifactExpr wraps col in the same worktree-canonicalization DuckDB
-// regexes clusterSQL has always used: in-repo (<repo>/.worktrees/<name>/) then
-// sibling (<repo>-worktrees/<name>/) layout, both collapsed to the main repo
-// root. Shared with Artifacts so the freshness audit set and the clustering
-// query agree on what "the same artifact" means.
+// canonicalArtifactExpr collapses worktree copies in col to the main repo root:
+// in-repo (<repo>/.worktrees/<name>/) then sibling (<repo>-worktrees/<name>/)
+// layout. Shared by clusterSQL and Artifacts so the clustering query and the
+// freshness audit set agree on what "the same artifact" means.
 func canonicalArtifactExpr(col string) string {
 	return fmt.Sprintf(`regexp_replace(regexp_replace(%s, '/\.worktrees/[^/]+/', '/'), '([^/]+)-worktrees/[^/]+/', '\1/')`, col)
 }
@@ -450,8 +449,8 @@ func WriteClusters(clusters []Cluster, indexPath string) error {
 
 // MergeClusters replaces one signal type's clusters in an existing index without
 // the pruning WriteClusters does, so a second producer (the freshness audit) can
-// add its clusters beside Track A's. Existing entries for other signal types,
-// and their files, are left untouched — MergeClusters never touches other files.
+// add its clusters beside Track A's. Entries for other signal types, and their
+// files, are left untouched.
 func MergeClusters(clusters []Cluster, indexPath, signalType string) error {
 	dir := filepath.Dir(indexPath)
 	clustersDir := filepath.Join(dir, "clusters")

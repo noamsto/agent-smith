@@ -31,10 +31,8 @@ var hostSegRe = regexp.MustCompile(`(?i)^[a-z0-9-]+(\.[a-z0-9-]+)*\.(com|org|net
 
 var placeholderStems = map[string]bool{"foo": true, "bar": true, "baz": true, "qux": true, "xxx": true}
 
-// Classify applies the static, filesystem-independent rules from
-// docs/superpowers/specs/2026-06-22-track-b-freshness-design.md §4.2.
-// Filesystem-dependent rules (existence, suffix/symbol liveness, gitignore)
-// are applied later, elsewhere.
+// Classify applies the filesystem-independent rules; existence, liveness and
+// gitignore checks happen during resolution.
 func Classify(c Candidate) Class {
 	if skipAlways(c.Path) {
 		return Skip
