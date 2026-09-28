@@ -16,9 +16,8 @@ const (
 	OutcomeMerged   = "merged"
 	OutcomeClosed   = "closed"
 	OutcomeRejected = "rejected"
-	// OutcomeUncited marks a proposal the citation checker rejected — the
-	// Oracle's fault, not the cluster's, so Escalate must not treat it as an
-	// already-known finding (the cluster should be re-proposed next run).
+	// OutcomeUncited marks a proposal cite-check rejected: the Oracle's fault,
+	// not the cluster's, so it never suppresses a later proposal or escalation.
 	OutcomeUncited = "uncited"
 )
 

@@ -26,10 +26,8 @@ type Result struct {
 	Notes    string // demote reason, e.g. "<ref>: no verified quote; …"
 }
 
-// citeProposal is a local decode of the proposal shape cite-check cares about.
-// Evidence is left as raw messages so non-string entries (e.g. #45's
-// {path,line} stale-ref evidence) are ignored rather than rejected, and
-// Proposal itself stays untouched.
+// citeProposal is the slice of a proposal cite-check reads. Evidence stays raw
+// so object-shaped entries (stale-ref {path,line}) decode instead of failing.
 type citeProposal struct {
 	ID                 string            `json:"id"`
 	ImplicatedArtifact string            `json:"implicated_artifact"`
@@ -111,12 +109,10 @@ func resolveRef(r ref, incidents []citeIncident) (resolvedRef, error) {
 			matches = append(matches, inc.SessionID)
 		}
 	}
-	switch len(matches) {
-	case 0:
+	if len(matches) == 0 {
 		return resolvedRef{}, fmt.Errorf("%s: no session matching %q", r.raw, r.token)
-	case 1:
-		// resolved
-	default:
+	}
+	if len(matches) > 1 {
 		return resolvedRef{}, fmt.Errorf("%s: ambiguous session %q (%d matches)", r.raw, r.token, len(matches))
 	}
 	sessionID := matches[0]
@@ -236,10 +232,9 @@ func evidenceRefs(evidence []json.RawMessage) []ref {
 	return out
 }
 
-// checkCitations verifies prop's evidence refs and citations against cluster
-// and reports whether the proposal should pass,
-// be demoted (unverifiable but not disprovable), or be rejected (a citation
-// that is provably wrong).
+// checkCitations reports whether a proposal passes, is demoted (a citation is
+// unverifiable but not disprovable), or is rejected (a citation is provably
+// wrong).
 func checkCitations(prop citeProposal, cluster Cluster) Result {
 	res := Result{ID: prop.ID}
 	if cluster.SignalType == "stale-ref" {
@@ -360,8 +355,6 @@ func ApplyCiteCheck(proposalPath, clusterPath, reasonLogDir, date string) (Resul
 		return Result{}, fmt.Errorf("parse cluster %s: %w", clusterPath, err)
 	}
 	if cluster.SignalType == "stale-ref" {
-		// Peek the id best-effort for a nicer CLI line; never fail on it — the
-		// point of checking signal_type first is to skip needing a valid proposal.
 		id := ""
 		if data, err := os.ReadFile(proposalPath); err == nil {
 			var p struct {
