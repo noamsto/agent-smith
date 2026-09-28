@@ -65,7 +65,7 @@ func TestAgentsHaveFrontmatter(t *testing.T) {
 }
 
 func TestCommandsExist(t *testing.T) {
-	for _, c := range []string{"run", "mine", "propose", "apply", "status"} {
+	for _, c := range []string{"run", "mine", "freshness", "propose", "apply", "status"} {
 		rel := "commands/" + c + ".md"
 		s := string(repoFile(t, rel))
 		if len(s) == 0 {

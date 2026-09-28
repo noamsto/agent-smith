@@ -20,6 +20,8 @@ func TestOracleAgentEmbedsTheGuard(t *testing.T) {
 		"escalate-out-of-instructions",
 		"Output valid JSON only",
 		"artifact_content",
+		"## stale-ref clusters",
+		"opens with the ref's",
 	} {
 		if !contains(p, must) {
 			t.Errorf("oracle prompt missing required text: %q", must)

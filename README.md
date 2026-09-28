@@ -46,13 +46,13 @@ flowchart TD
         sh["session history<br/>~hundreds of .jsonl"] -->|"duckdb · jq · cheap"| ext["extractor"] --> inc(["incidents"])
     end
 
-    subgraph B["🌐 TRACK B · freshness audit (planned) — is what they claim still true?"]
+    subgraph B["🌐 TRACK B · freshness audit — is what they claim still true?"]
         direction LR
-        art["the artifacts<br/>tools · flags · APIs · URLs"] --> claim["claim<br/>extractor"] -->|"web · docs · context7"| exp["explorers"] --> ver(["claim verdicts"])
+        art["the artifacts<br/>CLAUDE.md · AGENTS.md"] --> scan["analyst freshness<br/>scan · merge"] -->|"file-path refs now;<br/>flags · APIs · URLs planned"| ref(["stale-ref clusters"])
     end
 
     inc --> AN
-    ver --> AN
+    ref --> AN
 
     AN{{"🧠 ANALYST · Opus<br/>clusters glitches · diagnoses the fix · writes the reason"}}
     AN -->|"proposals + reason logs"| AP["🤖 APPLIER<br/>finds the repo that owns the artifact → opens a PR there"]
@@ -61,7 +61,7 @@ flowchart TD
     classDef track fill:#0d1117,stroke:#30363d,color:#8b949e;
     classDef node fill:#0d1117,stroke:#00ff41,color:#c9d1d9;
     classDef brain fill:#0d2818,stroke:#00ff41,color:#00ff41;
-    class sh,ext,inc,art,claim,exp,ver,AP,DV node;
+    class sh,ext,inc,art,scan,ref,AP,DV node;
     class AN brain;
     class A,B track;
 ```
@@ -82,11 +82,16 @@ fluke. Big clusters are fed to the Oracle as a **session-stratified sample**
 (breadth across sessions before depth) with truthful totals, so even a
 2,000-incident cluster fits in one diagnosis.
 
-**Track B — freshness audit** *(planned)*. The backward look can't catch a rule that was right
-when written and rotted since. So agent-smith reads the artifacts, extracts every
-external claim — a tool name, a CLI flag, a library API, a URL, a "best practice" —
-and **fans out one explorer per claim** to check it against the live world
-(`context7`, web search, changelogs). `changed` and `dead` claims become fixes.
+**Track B — freshness audit.** The backward look can't catch a rule that was right
+when written and rotted since. Track B v1 audits file-path references:
+`analyst freshness scan` extracts every `@import`, markdown link, and backtick
+path an instruction artifact names, resolves it against the repo, and flags what's
+missing — deterministically for a confident reference, via one adjudicator
+subagent per artifact for anything ambiguous (`/agent-smith:freshness`).
+Survivors become `stale-ref` clusters that feed the same Oracle → Skeptic →
+applier pipeline as Track A. CLI flags/subcommands, library APIs, version
+numbers, and URL/web explorers (`context7`, web search, changelogs) are still
+planned.
 
 The design bet: **the extractor is dumb and cheap, the analyst is smart and narrow.**
 Cost scales with the number of glitches, not the size of your history.
@@ -136,6 +141,7 @@ Then run it:
 ```
 /agent-smith:run          # the whole loop, autonomously → draft PRs
 /agent-smith:mine         # extractor → clusters
+/agent-smith:freshness    # Track B: stale file-path refs → stale-ref clusters
 /agent-smith:propose      # Oracle per cluster → citation check → proposals (review-only)
 /agent-smith:apply [<id>] # editor → verify → draft PR
 /agent-smith:status       # where things stand
@@ -210,9 +216,11 @@ designed.
 - ✅ **Phase 1 — MVP.** Track A → analyst → draft PR + reason logs; the
   `/agent-smith` plugin; pre-PR preflight. Acceptance bar met — and shipped as a
   real PR.
+- ✅ **Track B v1.** File-path freshness audit — `analyst freshness` scan/merge →
+  `stale-ref` clusters → the existing Oracle/Skeptic/applier pipeline.
 - ⏭ **Next.** Declarative install wiring ([#3](https://github.com/noamsto/agent-smith/issues/3)) ·
   HTML status dashboard ([#2](https://github.com/noamsto/agent-smith/issues/2)) ·
-  **Track B** freshness audit.
+  **Track B** CLI flag, library API, and URL explorers.
 - 🔄 **Phase 2 — the loop.** `déjà-vu` trend validation; scheduled runs;
   auto-commit for self-owned artifacts. The self-improving flywheel.
 - 🪝 **Phase 3 — the hook.** Inline capture so future mining gets even cheaper.

@@ -49,7 +49,10 @@ line, NOT the JSON and NOT prose (see "Output" below).
    against the cluster file at the path you were given. A real mismatch against THAT
    file → **refute**. If the path is missing or unreadable, say so in `caveats` and
    judge the proposal on the on-disk artifact evidence alone — an unreadable cluster
-   file is never evidence against the proposal.
+   file is never evidence against the proposal. For a `stale-ref` cluster (it carries
+   `evidence[]` and no incidents), verify each cited path is still missing on disk
+   and any repoint target exists; there are no windows or session counts, so their
+   absence is not weak evidence.
 5. Return `refuted` (with a one-line `reason` naming the contradicting evidence) or
    `upheld` (optionally with `caveats`). Return `unroutable` — **not** `refuted` —
    when the diagnosis itself verifies on disk but no instruction-file edit can carry
