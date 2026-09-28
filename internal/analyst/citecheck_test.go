@@ -275,6 +275,38 @@ func TestCheckCitations(t *testing.T) {
 			cluster:    cluster,
 			wantStatus: "ok",
 		},
+		{
+			name: "free-text evidence with a short quote demotes",
+			prop: citeProposal{
+				Confidence: "high",
+				Evidence:   []json.RawMessage{strEntry("free text, no ref")},
+				Citations:  []Citation{{Window: "362498af:229", Quote: "hi"}},
+			},
+			cluster:    cluster,
+			wantStatus: "demoted",
+			want:       []string{"362498af:229", "no verified quote"},
+		},
+		{
+			name: "free-text evidence with an empty quote demotes",
+			prop: citeProposal{
+				Confidence: "high",
+				Evidence:   []json.RawMessage{strEntry("free text, no ref")},
+				Citations:  []Citation{{Window: "362498af:229"}},
+			},
+			cluster:    cluster,
+			wantStatus: "demoted",
+			want:       []string{"362498af:229", "no verified quote"},
+		},
+		{
+			name: "free-text evidence with a verified quote is ok",
+			prop: citeProposal{
+				Confidence: "high",
+				Evidence:   []json.RawMessage{strEntry("free text, no ref")},
+				Citations:  []Citation{{Window: "362498af:229", Quote: `"skill":"deslop"`}},
+			},
+			cluster:    cluster,
+			wantStatus: "ok",
+		},
 	}
 
 	for _, tc := range tests {

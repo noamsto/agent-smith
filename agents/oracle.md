@@ -83,7 +83,7 @@ prose summary would flood its context. Format:
 ### Citation rules
 
 Every `evidence` ref is a leading `<session_id or ≥8-hex-char prefix>:<turn>[-<turn>]`,
-one ref per entry — free text may follow after a space (e.g. `79cf9d4e:11 (full Read of
+one ref per entry — free text may follow after a space; non-ref entries such as `≥N sessions` are allowed and not checked (e.g. `79cf9d4e:11 (full Read of
 handler.go)`). Cite only turns listed in that incident's `window[].turn`; never a
 turn outside the window you were given. Every window you cite in `evidence` needs a
 matching `citations` entry whose `window` is the same ref and whose `quote` is a

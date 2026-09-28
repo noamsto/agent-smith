@@ -310,6 +310,13 @@ func checkCitations(prop citeProposal, cluster Cluster) Result {
 	}
 
 	var notes []string
+	seenNotes := map[string]bool{}
+	addNote := func(n string) {
+		if !seenNotes[n] {
+			seenNotes[n] = true
+			notes = append(notes, n)
+		}
+	}
 	for _, r := range resolvedEvidence {
 		verifiedForRef := false
 		for _, c := range citations {
@@ -319,11 +326,16 @@ func checkCitations(prop citeProposal, cluster Cluster) Result {
 			}
 		}
 		if !verifiedForRef {
-			notes = append(notes, fmt.Sprintf("%s: no verified quote", r.raw))
+			addNote(fmt.Sprintf("%s: no verified quote", r.raw))
 		}
 	}
-	if len(prop.Citations) == 0 && len(resolvedEvidence) == 0 {
-		notes = append(notes, "no citations")
+	for _, c := range citations {
+		if !c.ok {
+			addNote(fmt.Sprintf("%s: no verified quote", c.raw))
+		}
+	}
+	if len(resolvedEvidence) == 0 && len(citations) == 0 {
+		addNote("no citations")
 	}
 	if len(notes) == 0 {
 		res.Status = "ok"

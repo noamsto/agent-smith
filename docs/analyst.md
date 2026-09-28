@@ -18,11 +18,11 @@ proposals.json + reason-log/*.md ◄── analyst assemble ◄─────�
 The `analyst` subcommands are deterministic; the Oracle (`agents/oracle.md`) is a
 pure `cluster → proposal JSON` completion dispatched once per cluster. `cite-check`
 runs per proposal, between the Oracle and the Skeptic (see `commands/propose.md`):
-it verifies every cited window (`evidence` refs and `citations[]`) and quote against the same cluster file — a cited window
-absent from the cluster, or a quote it can't find, rejects the proposal (renamed to
-`<file>.cite-rejected`, reason-log entry written); an unquoted citation on a `high`
-proposal caps it to `medium`. Phase-1 glue is the eval runbook
-(`fixtures/analyst/RUNBOOK.md`); the `/agent-smith` command is deferred.
+it verifies every cited window (`evidence` refs and `citations[]`) and quote against
+the same cluster file. A cited window absent from the cluster, or a quote it can't
+find, rejects the proposal (renamed to `<file>.cite-rejected`, reason-log entry
+written); a `high` proposal with any evidence ref lacking a verified quote, or no
+citations at all, is capped to `medium`.
 
 ## Commands
 
