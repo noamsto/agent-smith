@@ -120,7 +120,7 @@ live whether or not it is tracked.
    pickup glob). **Default-drop:** only an explicit `stale` keeps a ref.
 3. `analyst freshness merge --report freshness.json --adjudications-dir "<run dir>"
    --out clusters.json --reason-log-dir reason-log`. A non-empty adjudications dir
-   that cannot be listed is an error, not an empty verdict set.
+   that cannot be listed is reported on stderr and keeps no ambiguous ref.
 4. Report dead refs, ambiguous refs kept/dropped, clusters written; hand off to
    `/agent-smith:propose`.
 

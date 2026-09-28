@@ -137,10 +137,10 @@ analyst freshness merge --report freshness.json --adjudications-dir <dir> \
 `scan --db ""` disables the `incidents.db` audit-set query — pass one or more
 `--artifact <path>` and/or `--artifact-prefix <repo root>` instead.
 
-`merge --adjudications-dir <dir>` errors if `<dir>` is non-empty but doesn't
-exist on disk — a missing dir is never treated as "no adjudications", since
-that would silently drop every adjudicated ref. Pass `""` only when the
-adjudication step didn't run at all.
+`merge --adjudications-dir <dir>` prints `skip: open <dir>: …` on stderr when
+`<dir>` is non-empty but cannot be listed, then continues with no adjudicated
+refs (exit 0) — treat that line as a failed step, since every adjudicated ref
+was dropped. Pass `""` only when the adjudication step didn't run at all.
 
 ### `freshness.json` (scan output)
 
