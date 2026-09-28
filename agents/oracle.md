@@ -123,16 +123,24 @@ unchecked.
    - `fix-stale` — any ref gets a repoint or an in-place path correction.
    - `remove` — every fixed ref is a rule deletion, none is a repoint.
    - `skip` — every ref is benign; `reason_log` MUST start `skipped: benign
-     reference` and name why.
-4. `proposed_change` is a unified diff over the artifact. In a mixed cluster, fix
-   only the refs judged stale and cite only those in `evidence` — benign refs are
-   left out, not cited, and never drag the whole proposal to `skip`.
+     reference` and name why. `evidence` still cites every ref — `analyst
+     assemble` rejects a proposal with empty evidence — one bullet per ref in
+     the benign form: `` `path` (line N) — benign: <why> ``.
+4. `proposed_change` is a unified diff over the artifact (empty for `skip`). In
+   a **mixed** cluster (at least one fix alongside benign refs), cite only the
+   refs judged stale in `evidence` — benign refs are left out, not cited, and
+   never drag the whole proposal to `skip`. A fully-`skip` cluster has no fix
+   to isolate, so every ref is cited (step 3, above).
 5. **Each `evidence` string opens with the ref's `path` in backticks** — e.g.
    `` `docs/old.md` (line 12) → `docs/new.md` `` — this is what per-ref
    suppression matches on.
 6. `confidence`: `high` when the repoint target is a unique `same_name` hit or
    the rule is plainly obsolete; `medium` otherwise; `low` when guessing.
 7. Echo `stale-ref` as `signal_type`.
+
+The Hard rules' `(artifact, signal)` dedup rationale describes Track A; for
+stale-ref the echo requirement still applies (step 7, above) but the dedup key
+is **per ref**, not `(artifact, signal)` — see below.
 
 For `stale-ref`, the reason-log keys **per ref** on its evidence string (not on
 `(artifact, signal)`), so `id` must be ref-specific:

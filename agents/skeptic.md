@@ -50,9 +50,11 @@ line, NOT the JSON and NOT prose (see "Output" below).
    file → **refute**. If the path is missing or unreadable, say so in `caveats` and
    judge the proposal on the on-disk artifact evidence alone — an unreadable cluster
    file is never evidence against the proposal. For a `stale-ref` cluster (it carries
-   `evidence[]` and no incidents), verify each cited path is still missing on disk
-   and any repoint target exists; there are no windows or session counts, so their
-   absence is not weak evidence.
+   `evidence[]` and no incidents), check missingness at each ref's absolute
+   `evidence[].resolved_to`, and resolve any repoint target against the
+   artifact's repo root — `same_name` entries are repo-relative to that root,
+   not to your cwd — to confirm it exists; there are no windows or session
+   counts, so their absence is not weak evidence.
 5. Return `refuted` (with a one-line `reason` naming the contradicting evidence) or
    `upheld` (optionally with `caveats`). Return `unroutable` — **not** `refuted` —
    when the diagnosis itself verifies on disk but no instruction-file edit can carry

@@ -1,6 +1,6 @@
 ---
 description: Scan instruction artifacts for stale file-path references, adjudicate the ambiguous ones via subagents, and merge survivors into stale-ref clusters — Track B of the agent-smith loop.
-allowed-tools: Bash, Read, Write, Agent
+allowed-tools: Bash, Read, Write, Agent, Skill
 ---
 
 You are running the **freshness** phase of the agent-smith loop (Track B). The
@@ -22,33 +22,40 @@ Parse `$ARGUMENTS` (space-separated, case-insensitive; warn on unknown tokens):
   pass `--artifact-prefix "$REPO"` to `scan`.
 
 Precondition: `incidents.db` exists in the cwd — if missing, run the
-**agent-smith:mine** skill (Skill tool) first.
+**agent-smith:mine** skill (Skill tool) first. `analyst cluster` (run by
+**mine**) rewrites `clusters.json` and prunes every `stale-ref` cluster it did
+not write itself — run freshness AFTER mine, and re-run it after any later
+mine.
 
 1. `PATH="$BIN:$PATH" analyst freshness scan --db incidents.db --out freshness.json`
    (plus `--artifact-prefix "$REPO"` if `repo`). Reports
    `scanned N artifact(s) (S skipped): D dead, A ambiguous-missing → freshness.json`.
-2. `FRESH_DIR=$(mktemp -d /tmp/agentsmith-fresh.XXXXXX)` — deliberately outside
-   `apply.md`'s `/tmp/agent-smith-*` newest-dir glob, so an apply run never picks
-   this dir up by mistake. Group `freshness.json`'s `ambiguous_missing` by
-   `artifact` (`jq`). For each artifact with ambiguous refs, dispatch ONE
-   general-purpose adjudicator subagent (Agent tool) with a prompt carrying the
-   artifact path and its refs (`id`, `path`, `line`, `rule_excerpt`), asking, per
-   ref: *is this token a genuine claim that a file exists at this path in this
-   repo, or an example / placeholder / file-to-be-created / runtime output /
-   other-repo path / branch-or-slug token?* Only an explicit, confident "genuine
-   stale claim" earns `stale`; anything uncertain is `drop` (default-drop). The
+2. Run `mktemp -d /tmp/agentsmith-fresh.XXXXXX` **on its own** — deliberately
+   outside `apply.md`'s `/tmp/agent-smith-*` newest-dir glob, so an apply run
+   never picks this dir up by mistake — and capture its one-line stdout as the
+   adjudications dir. Each Bash call is a fresh shell, so a shell variable does
+   not survive to the next call: substitute that literal path into every
+   adjudicator prompt below, the merge call in step 3, and that step's cleanup —
+   never re-derive it, and never pass an empty string (the merge binary errors
+   on a non-empty adjudications dir that doesn't exist, and an empty path would
+   silently drop every adjudicated ref).
+
+   Group `freshness.json`'s `ambiguous_missing` by `artifact` (`jq`). For each
+   artifact with ambiguous refs, dispatch ONE **agent-smith:adjudicator**
+   subagent (Agent tool) with a prompt carrying the artifact path, its refs
+   (`id`, `path`, `line`, `rule_excerpt`), and the output file
+   `<adjudications-dir>/adj-<i>.json` (the literal path from above). The
    subagent reads the artifact around each line (read-only), writes
-   `[{"id","verdict":"stale"|"drop","reason"}]` to `$FRESH_DIR/adj-<i>.json`, and
-   returns one line. An adjudicator that errors or writes nothing drops all its
-   refs — no retry needed.
+   `[{"id","verdict":"stale"|"drop","reason"}]` to that file, and returns one
+   line. An adjudicator that errors or writes nothing drops all its refs — no
+   retry needed.
 3. `PATH="$BIN:$PATH" analyst freshness merge --report freshness.json
-   --adjudications-dir "$FRESH_DIR" --out clusters.json --reason-log-dir reason-log`.
-   Reports `wrote N stale-ref cluster(s) (R refs) into clusters.json (P suppressed
-   by reason-log)`. Remove `$FRESH_DIR` after a successful merge.
+   --adjudications-dir "<adjudications-dir>" --out clusters.json --reason-log-dir reason-log`
+   (the same literal path from step 2). Reports `wrote N stale-ref cluster(s)
+   (R refs) into clusters.json (P suppressed by reason-log)`. Remove the
+   adjudications dir after a successful merge.
 4. Report: dead refs (`artifact:line` `path`), ambiguous refs kept/dropped with
    reasons, clusters written, refs suppressed by a prior closed/rejected
-   reason-log entry. Ordering note: `analyst cluster` (run by **mine**) rewrites
-   `clusters.json` and prunes every `stale-ref` cluster it did not write itself —
-   run freshness AFTER mine, and re-run it after any later mine.
+   reason-log entry.
 
-Finally: `echo "next: /agent-smith:propose"`.
+Finally: `echo "next: /agent-smith:propose (not /agent-smith:run — its mine step prunes stale-ref clusters)"`.

@@ -49,7 +49,7 @@ func TestMarketplaceManifest(t *testing.T) {
 }
 
 func TestAgentsHaveFrontmatter(t *testing.T) {
-	for _, a := range []string{"agents/oracle.md", "agents/editor.md"} {
+	for _, a := range []string{"agents/oracle.md", "agents/editor.md", "agents/adjudicator.md"} {
 		s := string(repoFile(t, a))
 		if !strings.HasPrefix(s, "---\n") {
 			t.Errorf("%s: missing opening frontmatter", a)
