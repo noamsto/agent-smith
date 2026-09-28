@@ -11,8 +11,11 @@ order by invoking the sibling skills with the Skill tool:
    then blocks) **unless `$ARGUMENTS` contains `yes`**. So a bare `/agent-smith:run`
    stops for your confirmation after mining; `/agent-smith:run yes` runs hands-off
    (scheduled/cron use) — the `--top` cap is the cost bound either way.
-2. **agent-smith:propose** (each Oracle proposal then faces a **skeptic** pass that
-   refutes it against the real repo; refuted proposals are dropped before assembly)
+2. **agent-smith:propose** (each Oracle proposal first faces a **citation check**
+   that verifies its cited windows/quotes against the cluster — rejected or
+   unverified proposals are dropped before the Skeptic ever runs — then a
+   **skeptic** pass that refutes it against the real repo; refuted proposals are
+   dropped before assembly)
 3. **agent-smith:apply** (no id → every ready group; one PR per artifact group;
    `confidence: low` proposals are dropped by default)
 

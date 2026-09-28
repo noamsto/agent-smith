@@ -129,6 +129,9 @@ func Escalate(props []Proposal, verdicts map[string]Verdict, logDir, date string
 	}
 	known := map[string]bool{}
 	for _, e := range entries {
+		if e.Outcome == OutcomeUncited {
+			continue
+		}
 		known[artifactPath(e.Artifact)+"\x00"+e.Signal] = true
 	}
 

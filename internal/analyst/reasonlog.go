@@ -16,6 +16,9 @@ const (
 	OutcomeMerged   = "merged"
 	OutcomeClosed   = "closed"
 	OutcomeRejected = "rejected"
+	// OutcomeUncited marks a proposal cite-check rejected: the Oracle's fault,
+	// not the cluster's, so it never suppresses a later proposal or escalation.
+	OutcomeUncited = "uncited"
 )
 
 // PRPlaceholder is the slot the applier replaces with the PR link. WriteReasonLogs

@@ -9,13 +9,20 @@ incidents.db ──► analyst cluster ──► clusters.json (index) ──►
                                      + clusters/<id>.json         clusters/<id>.json)
                                                               │ proposal JSON per cluster
                                                               ▼
+                                                    analyst cite-check (per proposal)
+                                                              │ ok/demoted proposals
+                                                              ▼
 proposals.json + reason-log/*.md ◄── analyst assemble ◄──────┘
 ```
 
-The two binaries are deterministic; the Oracle (`agents/oracle.md`) is a
-pure `cluster → proposal JSON` completion dispatched once per cluster. Phase-1 glue
-is the eval runbook (`fixtures/analyst/RUNBOOK.md`); the `/agent-smith` command is
-deferred.
+The `analyst` subcommands are deterministic; the Oracle (`agents/oracle.md`) is a
+pure `cluster → proposal JSON` completion dispatched once per cluster. `cite-check`
+runs per proposal, between the Oracle and the Skeptic (see `commands/propose.md`):
+it verifies every cited window (`evidence` refs and `citations[]`) and quote against
+the same cluster file. A cited window absent from the cluster, or a quote it can't
+find, rejects the proposal (renamed to `<file>.cite-rejected`, reason-log entry
+written); a `high` proposal with any evidence ref or citation lacking a verified
+quote, or no citations at all, is capped to `medium`.
 
 ## Commands
 
@@ -24,6 +31,9 @@ nix develop
 go run ./cmd/analyst cluster  --db incidents.db --out clusters.json --min-sessions 5 --top 0 --reason-log-dir reason-log
 # (writes the index clusters.json + per-cluster clusters/<id>.json)
 # (dispatch the Oracle per cluster file → write proposal JSONs into ./proposals/)
+
+go run ./cmd/analyst cite-check --proposal proposals/p-1.json --cluster clusters/<id>.json --reason-log-dir reason-log
+# (run once per proposal; ok/demoted proposals continue to the Skeptic, rejected ones are dropped)
 
 go run ./cmd/analyst assemble --proposals-dir proposals --out proposals.json --reason-log-dir reason-log
 ```
