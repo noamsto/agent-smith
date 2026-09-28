@@ -8,13 +8,14 @@ import (
 	"time"
 
 	"github.com/noamsto/agent-smith/internal/analyst"
+	"github.com/noamsto/agent-smith/internal/freshness"
 )
 
 var version = "dev"
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: analyst <cluster|assemble|cite-check> [flags]")
+		fmt.Fprintln(os.Stderr, "usage: analyst <cluster|assemble|cite-check|freshness> [flags]")
 		os.Exit(2)
 	}
 	switch os.Args[1] {
@@ -26,6 +27,8 @@ func main() {
 		runAssemble(os.Args[2:])
 	case "cite-check":
 		runCiteCheck(os.Args[2:])
+	case "freshness":
+		runFreshness(os.Args[2:])
 	default:
 		fmt.Fprintf(os.Stderr, "unknown subcommand %q\n", os.Args[1])
 		os.Exit(2)
@@ -137,4 +140,96 @@ func runAssemble(args []string) {
 		}
 		fmt.Printf("unroutable %s: filed %s\n", e.ID, e.IssueURL)
 	}
+}
+
+func runFreshness(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "usage: analyst freshness <scan|merge> [flags]")
+		os.Exit(2)
+	}
+	switch args[0] {
+	case "scan":
+		runFreshnessScan(args[1:])
+	case "merge":
+		runFreshnessMerge(args[1:])
+	default:
+		fmt.Fprintln(os.Stderr, "usage: analyst freshness <scan|merge> [flags]")
+		os.Exit(2)
+	}
+}
+
+func runFreshnessScan(args []string) {
+	fs := flag.NewFlagSet("freshness scan", flag.ExitOnError)
+	db := fs.String("db", "incidents.db", "incidents DuckDB file supplying the audit set; \"\" = artifacts only from --artifact")
+	out := fs.String("out", "freshness.json", "scan report output")
+	artifactPrefix := fs.String("artifact-prefix", "", "keep only artifacts under this repo root (worktree roots canonicalized)")
+	var artifacts []string
+	fs.Func("artifact", "an artifact to audit, in addition to --db's set (repeatable)", func(v string) error {
+		artifacts = append(artifacts, v)
+		return nil
+	})
+	_ = fs.Parse(args)
+
+	paths := artifacts
+	if *db != "" {
+		fromDB, err := analyst.Artifacts(context.Background(), *db)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "analyst freshness scan:", err)
+			os.Exit(1)
+		}
+		paths = append(fromDB, paths...)
+	}
+	if len(paths) == 0 {
+		fmt.Fprintln(os.Stderr, "analyst freshness scan: no artifacts to audit")
+		os.Exit(1)
+	}
+
+	report := freshness.Scan(paths, freshness.Options{Prefix: *artifactPrefix})
+	if err := freshness.WriteReport(report, *out); err != nil {
+		fmt.Fprintln(os.Stderr, "analyst freshness scan:", err)
+		os.Exit(1)
+	}
+	fmt.Printf("scanned %d artifact(s) (%d skipped): %d dead, %d ambiguous-missing → %s\n",
+		len(report.Scanned), len(report.Skipped), len(report.Dead), len(report.AmbiguousMissing), *out)
+}
+
+func runFreshnessMerge(args []string) {
+	fs := flag.NewFlagSet("freshness merge", flag.ExitOnError)
+	report := fs.String("report", "freshness.json", "scan report to merge")
+	adjDir := fs.String("adjudications-dir", "", "directory of adj-*.json adjudication files; \"\" = no ambiguous refs kept")
+	out := fs.String("out", "clusters.json", "cluster index to merge stale-ref clusters into")
+	reasonLog := fs.String("reason-log-dir", "reason-log", "reason-log directory consulted for prior stale-ref suppressions")
+	_ = fs.Parse(args)
+
+	r, err := freshness.ReadReport(*report)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "analyst freshness merge:", err)
+		os.Exit(1)
+	}
+	stale, errs := freshness.LoadAdjudications(*adjDir)
+	for _, e := range errs {
+		fmt.Fprintln(os.Stderr, "skip:", e)
+	}
+	entries, err := analyst.ReadEntries(*reasonLog)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "analyst freshness merge:", err)
+		os.Exit(1)
+	}
+	clusters, suppressed, errs := freshness.Clusters(r, stale, entries)
+	for _, e := range errs {
+		fmt.Fprintln(os.Stderr, "skip:", e)
+	}
+	for _, ref := range suppressed {
+		fmt.Fprintf(os.Stderr, "suppress %s %s: a prior stale-ref proposal was closed/rejected\n", ref.Artifact, ref.Path)
+	}
+	if err := analyst.MergeClusters(clusters, *out, freshness.SignalType); err != nil {
+		fmt.Fprintln(os.Stderr, "analyst freshness merge:", err)
+		os.Exit(1)
+	}
+	refs := 0
+	for _, c := range clusters {
+		refs += c.TotalIncidents
+	}
+	fmt.Printf("wrote %d stale-ref cluster(s) (%d refs) into %s (%d suppressed by reason-log)\n",
+		len(clusters), refs, *out, len(suppressed))
 }
