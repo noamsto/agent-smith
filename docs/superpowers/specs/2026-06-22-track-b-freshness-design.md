@@ -214,10 +214,11 @@ An ambiguous token that resolves to a live path is dropped like any other.
     worktree is checked against the main checkout.
 - "Exists" is `os.Stat` success (file or directory; symlinks followed, so a dangling
   symlink is missing).
-- **Suffix liveness.** A relative ref missing under every base is still live when some
+- **Suffix liveness.** A relative backtick ref missing under every base is still live when some
   existing repo path ends in `/<ref>` — instruction files routinely name files relative
   to a subproject (`daemon/conn.go` for `picker/remotebridge/daemon/conn.go`). The
-  lookup uses the repo walk below.
+  lookup uses the repo walk below. Links and imports resolve file-relative by
+  definition, so they do not get it.
 - **Symbol liveness.** A ref is live when stripping a trailing symbol leaves an
   existing path: `:Ident` or `#anchor` after a file, or `.Ident` after an existing file
   or directory (`internal/analyst.ClusterDB`, `cluster.go:ClusterDB`). `Ident` is
