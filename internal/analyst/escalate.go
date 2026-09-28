@@ -129,6 +129,12 @@ func Escalate(props []Proposal, verdicts map[string]Verdict, logDir, date string
 	}
 	known := map[string]bool{}
 	for _, e := range entries {
+		if e.Outcome == OutcomeUncited {
+			// A citation-check rejection is the Oracle's fault, not the
+			// cluster's — the finding was never actually confirmed, so it must
+			// not block re-filing on a later run.
+			continue
+		}
 		known[artifactPath(e.Artifact)+"\x00"+e.Signal] = true
 	}
 

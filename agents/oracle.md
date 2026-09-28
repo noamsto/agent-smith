@@ -76,5 +76,20 @@ prose summary would flood its context. Format:
   "diagnosis": "<what's wrong>",
   "proposed_change": "<concrete edited text or unified diff; empty for skip>",
   "confidence": "<high|medium|low>",
-  "reason_log": "<why this change, which signal drove it, expected effect>"
+  "reason_log": "<why this change, which signal drove it, expected effect>",
+  "citations": [{"window": "<session_id:turn[-turn]>", "quote": "<verbatim substring>"}]
 }
+
+### Citation rules
+
+Every `evidence` ref is a leading `<session_id or ≥8-hex-char prefix>:<turn>[-<turn>]`,
+one ref per entry — free text may follow after a space (e.g. `79cf9d4e:11 (full Read of
+handler.go)`). Cite only turns listed in that incident's `window[].turn`; never a
+turn outside the window you were given. Every window you cite in `evidence` needs a
+matching `citations` entry whose `window` is the same ref and whose `quote` is a
+**verbatim** substring (≥8 characters, from a single turn — never spanning the
+truncation marker) copied from that turn's `excerpt`, or from that incident's
+`detail`. `analyst cite-check` verifies this mechanically, before the Skeptic ever
+sees the proposal: a cited window absent from the cluster, or a quote it can't find,
+**rejects the whole proposal**; a `high`-confidence proposal carrying any unquoted
+or missing citation is capped to `medium`.

@@ -14,7 +14,7 @@ var version = "dev"
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: analyst <cluster|assemble> [flags]")
+		fmt.Fprintln(os.Stderr, "usage: analyst <cluster|assemble|cite-check> [flags]")
 		os.Exit(2)
 	}
 	switch os.Args[1] {
@@ -24,6 +24,8 @@ func main() {
 		runCluster(os.Args[2:])
 	case "assemble":
 		runAssemble(os.Args[2:])
+	case "cite-check":
+		runCiteCheck(os.Args[2:])
 	default:
 		fmt.Fprintf(os.Stderr, "unknown subcommand %q\n", os.Args[1])
 		os.Exit(2)

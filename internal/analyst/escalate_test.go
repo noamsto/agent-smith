@@ -123,6 +123,27 @@ func TestEscalateDedupsAgainstReasonLog(t *testing.T) {
 	}
 }
 
+func TestEscalateSkipsUncitedEntries(t *testing.T) {
+	props := loadUnroutable(t)
+	logDir := t.TempDir()
+	writeJSON(t, filepath.Join(logDir, "2026-09-10-uncited.md"),
+		"# glitch-extractor-fp — citation check failed\n\n"+
+			"**Artifact:** /g/CLAUDE.md#reading-code  \n"+
+			"**Signal:** false-positive  \n\n"+
+			"## Failed citations\n\n- s1:1: no session matching \"s1\"\n\n"+
+			outcomeMarker(OutcomeUncited)+"\n")
+
+	f := &fakeFiler{}
+	escs, err := Escalate(props, map[string]Verdict{"glitch-extractor-fp": {Verdict: VerdictUnroutable}},
+		logDir, "2026-09-10", f.file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(escs) != 1 || escs[0].IssueURL == "" {
+		t.Fatalf("expected the uncited entry not to block filing, got %+v", escs)
+	}
+}
+
 func TestEscalateWithoutFilerSkips(t *testing.T) {
 	props := loadUnroutable(t)
 	logDir := t.TempDir()

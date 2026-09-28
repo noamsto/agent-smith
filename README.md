@@ -136,7 +136,7 @@ Then run it:
 ```
 /agent-smith:run          # the whole loop, autonomously → draft PRs
 /agent-smith:mine         # extractor → clusters
-/agent-smith:propose      # Oracle per cluster → proposals (review-only)
+/agent-smith:propose      # Oracle per cluster → citation check → proposals (review-only)
 /agent-smith:apply [<id>] # editor → verify → draft PR
 /agent-smith:status       # where things stand
 ```

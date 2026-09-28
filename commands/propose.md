@@ -36,11 +36,25 @@ skill (Skill tool) first.
      and return only your one-line final message — not the JSON. Read the per-cluster
      file directly — do NOT pass the whole index."
    - If the Oracle errors or writes no file, log a skip and continue.
-3. **Skeptic pass — one per non-skip Oracle proposal.** A single Oracle pass turns
-   directly into human triage; an unverified inference (e.g. "no guidance exists" judged
-   without resolving `@AGENTS.md`) propagates to wrong PRs. Skip proposals
-   (`fix_type: skip`) decline outright and can never produce a PR — leave them
-   unverified. For each remaining `p-<i>.json` the Oracle wrote, dispatch the
+3. **Citation check — one per Oracle proposal, before any Skeptic dispatch.** For
+   each `p-<i>.json` the Oracle wrote, run:
+   `PATH="$BIN:$PATH" analyst cite-check --proposal "$PROPOSALS_DIR/p-<i>.json" --cluster <file> --reason-log-dir reason-log`
+   (the same `<file>` you dispatched to that proposal's Oracle). This verifies every
+   cited window and quote mechanically, cheaper than a Skeptic dispatch:
+   - `rejected <id>: …` — the command already renamed the proposal file away and
+     wrote a reason-log entry; there is nothing left to Skeptic. Record the id +
+     reason for the report.
+   - non-zero exit (I/O/parse error) — treat as unverified: delete `p-<i>.json` so it
+     never reaches the Skeptic or assembly, and record it for the report.
+   - `demoted <id>: …` — the proposal file was rewritten in place (confidence capped
+     to `medium`); continue to the Skeptic pass with the demoted file.
+   - `ok <id>` — unchanged; continue to the Skeptic pass.
+4. **Skeptic pass — one per non-skip Oracle proposal that passed cite-check.** A
+   single Oracle pass turns directly into human triage; an unverified inference
+   (e.g. "no guidance exists" judged without resolving `@AGENTS.md`) propagates to
+   wrong PRs. Skip proposals (`fix_type: skip`) decline outright and can never
+   produce a PR — leave them unverified. For each remaining `p-<i>.json` that passed
+   cite-check, dispatch the
    **agent-smith:skeptic** subagent (Agent tool):
    "Read the proposal at `$PROPOSALS_DIR/p-<i>.json`; its cluster is at `<file>` —
    the same per-cluster path you gave the Oracle for this `<i>`, and the only cluster
@@ -57,13 +71,14 @@ skill (Skill tool) first.
      escalates the finding as an issue instead of losing it.
    - Record every dropped proposal (id + skeptic `reason`) for the report — surface
      them, never silently discard.
-4. `analyst assemble --proposals-dir $PROPOSALS_DIR --out proposals.json --reason-log-dir reason-log --file-issues`
+5. `analyst assemble --proposals-dir $PROPOSALS_DIR --out proposals.json --reason-log-dir reason-log --file-issues`
    — `--file-issues` opens one agent-smith issue per `unroutable` proposal (deduped
    against the reason-log, so a finding is filed once, not once per run); drop the
    flag for a dry run. (Pass `--date <today>` only if needed; default is today.)
-5. Report the assembled proposals (id, fix_type, confidence), the proposals the
-   skeptic refuted (id + reason), and any `unroutable` escalations (id + issue link).
-   This phase is review-only — no edits, no PRs.
+6. Report the assembled proposals (id, fix_type, confidence), the proposals the
+   citation check rejected or dropped (id + reason), the proposals the skeptic
+   refuted (id + reason), and any `unroutable` escalations (id + issue link). This
+   phase is review-only — no edits, no PRs.
 
 Finally, print the exact pasteable follow-up so `apply` targets this run's dir, not a
 stale one: `echo "next: /agent-smith:apply $PROPOSALS_DIR"`. The apply phase defaults

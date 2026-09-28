@@ -16,6 +16,10 @@ const (
 	OutcomeMerged   = "merged"
 	OutcomeClosed   = "closed"
 	OutcomeRejected = "rejected"
+	// OutcomeUncited marks a proposal the citation checker rejected — the
+	// Oracle's fault, not the cluster's, so Escalate must not treat it as an
+	// already-known finding (the cluster should be re-proposed next run).
+	OutcomeUncited = "uncited"
 )
 
 // PRPlaceholder is the slot the applier replaces with the PR link. WriteReasonLogs
