@@ -21,8 +21,8 @@ runs per proposal, between the Oracle and the Skeptic (see `commands/propose.md`
 it verifies every cited window (`evidence` refs and `citations[]`) and quote against
 the same cluster file. A cited window absent from the cluster, or a quote it can't
 find, rejects the proposal (renamed to `<file>.cite-rejected`, reason-log entry
-written); a `high` proposal with any evidence ref lacking a verified quote, or no
-citations at all, is capped to `medium`.
+written); a `high` proposal with any evidence ref or citation lacking a verified
+quote, or no citations at all, is capped to `medium`.
 
 ## Commands
 
