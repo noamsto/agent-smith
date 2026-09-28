@@ -15,6 +15,9 @@ final returned message is a single terse line, NOT the JSON and NOT prose (see
 
 ## Input
 
+If `signal_type` is `stale-ref`, skip to **stale-ref clusters** below — it
+replaces this section and **Procedure**.
+
 A JSON cluster:
 - `signal_type` — the glitch kind (e.g. `inefficiency`, `tool_error`, `retry`, `user_correction`).
 - `artifact` — path of the implicated instruction file.
@@ -104,6 +107,7 @@ unchecked.
 
 ### Input
 
+- `artifact` — path of the artifact holding the stale references.
 - `artifact_content` — the artifact's current text (Read the file directly if
   this is truncated; the full text is what you diagnose against).
 - `evidence[]` — one entry per stale reference: `{path, line, rule_excerpt,

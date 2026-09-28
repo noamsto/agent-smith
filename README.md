@@ -139,7 +139,7 @@ single-plugin marketplace):
 Then run it:
 
 ```
-/agent-smith:run          # the whole loop, autonomously → draft PRs
+/agent-smith:run          # mine → propose → apply, autonomously → draft PRs (not freshness)
 /agent-smith:mine         # extractor → clusters
 /agent-smith:freshness    # Track B: stale file-path refs → stale-ref clusters
 /agent-smith:propose      # Oracle per cluster → citation check → proposals (review-only)
