@@ -78,6 +78,12 @@ WITH g AS (
 SELECT g.session_id, g.turn, g.ts,
        c.value->>'tool_use_id'              AS tuid,
        COALESCE((c.value->>'is_error') = 'true', false) AS is_error,
+       -- The result text, so a tool_error incident can record what actually
+       -- failed. `content` is a bare string for most tools and a block array for
+       -- others; the JSON form is the honest fallback rather than losing it.
+       CASE WHEN json_type(c.value->'content') = 'VARCHAR'
+            THEN c.value->>'content'
+            ELSE CAST(c.value->'content' AS VARCHAR) END AS result_text,
        COALESCE((g.tur->'file'->>'totalLines')::BIGINT,
                 (g.tur->'file'->>'numLines')::BIGINT, 0) AS total_lines
 FROM g, unnest(g.blocks) AS c(value)
