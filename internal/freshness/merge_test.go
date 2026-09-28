@@ -101,6 +101,27 @@ func TestLoadAdjudicationsVerdicts(t *testing.T) {
 	}
 }
 
+func TestLoadAdjudicationsBadDir(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "adj-1.json")
+	writeFile(t, file, `[]`)
+	for _, d := range []string{filepath.Join(dir, "missing"), file} {
+		stale, errs := LoadAdjudications(d)
+		if len(errs) != 1 || len(stale) != 0 || stale == nil {
+			t.Errorf("LoadAdjudications(%q) = %v, %v; want empty map and one error", d, stale, errs)
+		}
+	}
+}
+
+func TestLoadAdjudicationsGlobMetacharDir(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "adj[1]")
+	writeFile(t, filepath.Join(dir, "adj-1.json"), `[{"id": "kept", "verdict": "stale"}]`)
+	stale, errs := LoadAdjudications(dir)
+	if len(errs) != 0 || !stale["kept"] {
+		t.Fatalf("stale = %v, errs = %v; want kept read from a dir whose name has glob metacharacters", stale, errs)
+	}
+}
+
 func TestClustersSuppressionLeadingTokenOnly(t *testing.T) {
 	dir := realTempDir(t)
 	artifact := filepath.Join(dir, "CLAUDE.md")

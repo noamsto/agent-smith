@@ -207,6 +207,27 @@ func TestExtractFences(t *testing.T) {
 			},
 		},
 		{
+			name: "fence nested in a list item (4+ spaces) still toggles",
+			content: "- step:\n" +
+				"      ```sh\n" +
+				"      cat `fenced/backtick.go`\n" +
+				"      ```\n" +
+				"after `real.go`",
+			want: []simple{
+				{FormBacktick, "real.go", 5},
+			},
+		},
+		{
+			name: "tab-indented fence still toggles",
+			content: "\t~~~\n" +
+				"\t@fenced/import.md\n" +
+				"\t~~~\n" +
+				"after `real.go`",
+			want: []simple{
+				{FormBacktick, "real.go", 4},
+			},
+		},
+		{
 			name: "longer closing run required",
 			content: "````\n" +
 				"``` still inside\n" +

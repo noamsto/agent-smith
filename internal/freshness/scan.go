@@ -163,8 +163,11 @@ func filterArts(arts []audited, prefix string) []audited {
 	return out
 }
 
+// maxImportBytes caps an @import target that is audited and embedded.
+const maxImportBytes = 1 << 20
+
 // imports returns, sorted, the nominal path of every @import in au whose first
-// existing base is a regular file.
+// existing base is a followable file (see followable).
 func (s *scanner) imports(au audited) []string {
 	var out []string
 	for _, c := range au.cands {
@@ -180,7 +183,7 @@ func (s *scanner) imports(au audited) []string {
 			if err != nil {
 				continue
 			}
-			if info.Mode().IsRegular() {
+			if info.Mode().IsRegular() && info.Size() <= maxImportBytes && s.followable(au.a, b) {
 				out = append(out, b)
 			}
 			break
@@ -188,6 +191,27 @@ func (s *scanner) imports(au audited) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// followable reports whether p's real path lies under a's root or the home
+// dir, and outside the kernel pseudo-filesystems, so an @import (or a symlink
+// it names) can't pull an arbitrary file into the audit set and its content
+// into clusters.
+func (s *scanner) followable(a artifact, p string) bool {
+	rp, err := filepath.EvalSymlinks(p)
+	if err != nil {
+		return false
+	}
+	for _, sys := range []string{"/proc", "/sys", "/dev"} {
+		if within(rp, sys) {
+			return false
+		}
+	}
+	return within(rp, a.Root) || within(rp, s.home) || within(rp, s.realHome)
+}
+
+func within(p, dir string) bool {
+	return dir != "" && (p == dir || strings.HasPrefix(p, strings.TrimSuffix(dir, "/")+"/"))
 }
 
 // resolveArtifact returns au's missing refs. Candidates sharing an ID (the same

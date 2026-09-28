@@ -65,15 +65,13 @@ func Extract(content string) []Candidate {
 	return out
 }
 
-// fenceMarker reports whether line opens or closes a ``` or ~~~ fence, per
-// CommonMark's up-to-3-space indentation allowance. It doesn't distinguish
-// open from close — the caller compares ch/n against the current fence state.
+// fenceMarker reports whether line opens or closes a ``` or ~~~ fence. Any
+// indentation counts, beyond CommonMark's 3 spaces, so a fence nested in a list
+// item is honored; misreading an indented code line as a fence only skips
+// candidates, the safe direction. It doesn't distinguish open from close — the
+// caller compares ch/n against the current fence state.
 func fenceMarker(line string) (ch byte, n int, ok bool) {
-	indent := 0
-	for indent < len(line) && indent < 3 && line[indent] == ' ' {
-		indent++
-	}
-	rest := line[indent:]
+	rest := strings.TrimLeft(line, " \t")
 	switch {
 	case strings.HasPrefix(rest, "```"):
 		ch = '`'

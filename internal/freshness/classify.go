@@ -24,6 +24,11 @@ const skipChars = `$*?[]{}<>|='"(),\`
 // not naming a real path — "e.g. `config.yaml`", "such as `foo/bar.go`".
 var exampleMarkerRe = regexp.MustCompile(`(?i)\be\.g\.|\bi\.e\.|\bexample|\bsuch as\b`)
 
+// hostSegRe matches a scheme-less URL's leading host (`github.com/o/r`,
+// `pkg.go.dev/fmt`). Requiring the "/" keeps a bare `install.sh` or
+// `libfoo.so` a file.
+var hostSegRe = regexp.MustCompile(`(?i)^[a-z0-9-]+(\.[a-z0-9-]+)*\.(com|org|net|io|dev|ai|app|sh|co|me|gg|so|xyz|cloud|run)/`)
+
 var placeholderStems = map[string]bool{"foo": true, "bar": true, "baz": true, "qux": true, "xxx": true}
 
 // Classify applies the static, filesystem-independent rules from
@@ -58,7 +63,7 @@ func skipAlways(path string) bool {
 	if path == "" {
 		return true
 	}
-	if strings.Contains(path, "://") {
+	if strings.Contains(path, "://") || strings.HasPrefix(path, "//") || hostSegRe.MatchString(path) {
 		return true
 	}
 	if strings.HasPrefix(path, "mailto:") || strings.HasPrefix(path, "data:") || strings.HasPrefix(path, "tel:") {

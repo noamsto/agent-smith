@@ -315,3 +315,94 @@ func TestCapBytes(t *testing.T) {
 		}
 	}
 }
+
+// TestScanAbsoluteLinkEndToEnd runs Scan on an absolute link, so its temp
+// dirs must live outside /tmp, which Classify skips.
+func TestScanAbsoluteLinkEndToEnd(t *testing.T) {
+	if st, err := os.Stat("/var/tmp"); err != nil || !st.IsDir() {
+		t.Skip("/var/tmp unavailable")
+	}
+	t.Setenv("TMPDIR", "/var/tmp")
+	isolateGit(t)
+	repo := fixtureRepo(t)
+	if strings.HasPrefix(repo, "/tmp/") {
+		t.Fatalf("repo %q is under /tmp; the test would not exercise Scan", repo)
+	}
+	art := filepath.Join(repo, "CLAUDE.md")
+	writeFile(t, art, "[g]("+repo+"/docs/guide.md) and [x]("+repo+"/docs/gone.md)\n")
+
+	r := newScanner("", true).scan([]string{art}, Options{})
+	if got := bucket(r, repo+"/docs/guide.md"); got != "" {
+		t.Errorf("absolute link to a live file reported %s: %+v", got, r)
+	}
+	if got := bucket(r, repo+"/docs/gone.md"); got != "dead" {
+		t.Errorf("absolute link to a missing file = %q, want dead: %+v", got, r)
+	}
+}
+
+func TestScanUnreadableFailsTowardLive(t *testing.T) {
+	isolateGit(t)
+	repo := fixtureRepo(t)
+	writeFile(t, filepath.Join(repo, "locked", "f.go"), "")
+	lockDir(t, filepath.Join(repo, "locked"))
+	art := filepath.Join(repo, "CLAUDE.md")
+	writeFile(t, art, "See `locked/f.go` and `deep/conn.go`.\n")
+
+	r := newScanner("", true).scan([]string{art}, Options{})
+	if len(r.Dead)+len(r.AmbiguousMissing) != 0 {
+		t.Fatalf("refs behind an unreadable dir must count as live, got %+v", r)
+	}
+}
+
+func TestScanSymlinkedArtifactNominalDir(t *testing.T) {
+	isolateGit(t)
+	repo := fixtureRepo(t)
+	target := filepath.Join(repo, "home", "ai", "CLAUDE.global.md")
+	writeFile(t, target, "See `rules/local.md` and `rules/gone.md`.\n")
+
+	nominal := realTempDir(t)
+	writeFile(t, filepath.Join(nominal, "rules", "local.md"), "")
+	link := filepath.Join(nominal, "CLAUDE.md")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+
+	r := newScanner("", true).scan([]string{link}, Options{})
+	if got := bucket(r, "rules/local.md"); got != "" {
+		t.Errorf("rules/local.md beside the nominal path reported %s: %+v", got, r)
+	}
+	if got := bucket(r, "rules/gone.md"); got != "dead" {
+		t.Errorf("rules/gone.md = %q, want dead (rules/ exists beside the nominal path): %+v", got, r)
+	}
+}
+
+func TestScanImportBounds(t *testing.T) {
+	isolateGit(t)
+	repo := realTempDir(t)
+	gitInit(t, repo)
+	outside := filepath.Join(realTempDir(t), "outside.md")
+	writeFile(t, outside, "See `docs/gone.go`.\n")
+	escape := filepath.Join(repo, "escape.md")
+	if err := os.Symlink(outside, escape); err != nil {
+		t.Fatal(err)
+	}
+	big := filepath.Join(repo, "big.md")
+	writeFile(t, big, strings.Repeat("x", 1<<20+1))
+	inside := filepath.Join(repo, "inside.md")
+	writeFile(t, inside, "")
+
+	imports := "@" + outside + "\n@escape.md\n@big.md\n@inside.md\n@gone.md\n"
+	if _, err := os.Stat("/proc/self/status"); err == nil {
+		imports += "@/proc/self/status\n"
+	}
+	art := filepath.Join(repo, "CLAUDE.md")
+	writeFile(t, art, imports)
+
+	r := newScanner("", true).scan([]string{art}, Options{})
+	if want := []string{art, inside}; !reflect.DeepEqual(r.Scanned, want) {
+		t.Fatalf("Scanned = %q, want %q (imports outside the root, oversize, or under /proc not followed)", r.Scanned, want)
+	}
+	if bucket(r, "gone.md") != "dead" || len(r.Dead)+len(r.AmbiguousMissing) != 1 {
+		t.Fatalf("want only the missing import gone.md reported, got %+v", r)
+	}
+}

@@ -16,16 +16,25 @@ const SignalType = "stale-ref"
 
 // LoadAdjudications reads every adj-*.json file under dir and returns the set
 // of ref ids adjudicated stale. dir == "" (no adjudication step run) yields an
-// empty, non-nil map and no errors. A file that fails to read or decode is
-// reported in errs (naming the file) and contributes nothing — default-drop,
-// since an id this run cannot vouch for must not slip into "stale" by omission.
+// empty, non-nil map and no errors. A dir that cannot be listed, or a file that
+// fails to read or decode, is reported in errs (naming it) and contributes
+// nothing — default-drop, since an id this run cannot vouch for must not slip
+// into "stale" by omission.
 func LoadAdjudications(dir string) (stale map[string]bool, errs []error) {
 	stale = map[string]bool{}
 	if dir == "" {
 		return stale, nil
 	}
-	paths, _ := filepath.Glob(filepath.Join(dir, "adj-*.json"))
-	for _, p := range paths {
+	// ReadDir, not Glob, so a dir name holding glob metacharacters still lists.
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		return stale, []error{err}
+	}
+	for _, f := range files {
+		if !strings.HasPrefix(f.Name(), "adj-") || !strings.HasSuffix(f.Name(), ".json") {
+			continue
+		}
+		p := filepath.Join(dir, f.Name())
 		data, err := os.ReadFile(p)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", p, err))

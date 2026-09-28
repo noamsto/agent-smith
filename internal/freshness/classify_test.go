@@ -28,6 +28,11 @@ func TestClassify(t *testing.T) {
 		{"skip: exactly /tmp", Candidate{Form: FormBacktick, Path: "/tmp"}, Skip},
 		{"skip: /tmp/ prefix", Candidate{Form: FormBacktick, Path: "/tmp/file.go"}, Skip},
 		{"skip: empty path", Candidate{Form: FormBacktick, Path: ""}, Skip},
+		{"skip: scheme-relative URL", Candidate{Form: FormLink, Path: "//cdn.example.com/x.js"}, Skip},
+		{"skip: scheme-less host link", Candidate{Form: FormLink, Path: "example.com/x.md"}, Skip},
+		{"skip: go module path", Candidate{Form: FormBacktick, Path: "github.com/o/r"}, Skip},
+		{"skip: multi-label host", Candidate{Form: FormBacktick, Path: "pkg.go.dev/fmt"}, Skip},
+		{"skip: host case-insensitive", Candidate{Form: FormLink, Path: "GitHub.COM/o/r.md"}, Skip},
 
 		// --- Skip, backtick only ---
 		{"skip: backtick no slash", Candidate{Form: FormBacktick, Path: "README"}, Skip},
@@ -49,6 +54,11 @@ func TestClassify(t *testing.T) {
 		{"confident: backtick trailing slash is not ambiguous", Candidate{Form: FormBacktick, Path: "internal/freshness/"}, Confident},
 		{"confident: backtick ./ prefix is not ambiguous", Candidate{Form: FormBacktick, Path: "./Makefile"}, Confident},
 		{"confident: backtick ../ prefix is not ambiguous", Candidate{Form: FormBacktick, Path: "../Makefile"}, Confident},
+		{"confident: bare .sh link is a file, not a host", Candidate{Form: FormLink, Path: "install.sh"}, Confident},
+		{"confident: bare .ai link is a file, not a host", Candidate{Form: FormLink, Path: "logo.ai"}, Confident},
+		{"confident: TLD-like extension in a later segment", Candidate{Form: FormBacktick, Path: "scripts/install.sh"}, Confident},
+		{"confident: .md first segment", Candidate{Form: FormLink, Path: "notes.md"}, Confident},
+		{"confident: .go file under a dir", Candidate{Form: FormBacktick, Path: "docs/x.go"}, Confident},
 		{
 			// The candidate's own span is masked out of Masked, so a path literally
 			// named "examples/..." doesn't trip the example-marker rule on itself.

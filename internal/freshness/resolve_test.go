@@ -64,11 +64,15 @@ func TestBases(t *testing.T) {
 	}{
 		{"import relative: nominal then resolved dir", s, a, FormImport, "x.md", []string{"/n/x.md", "/r/sub/x.md"}, false},
 		{"import absolute outside every root is not skipped", s, a, FormImport, "/abs/x.md", []string{"/abs/x.md"}, false},
+		{"import absolute into in-repo worktree", s, a, FormImport, "/r/.worktrees/w/x.md", []string{"/r/.worktrees/w/x.md", "/r/x.md"}, false},
 		{"import ~ expands to home", s, a, FormImport, "~/x.md", []string{"/h/x.md"}, false},
 		{"import ~ with no home is skipped", noHome, a, FormImport, "~/x.md", nil, true},
 		{"link relative: nominal then resolved dir", s, a, FormLink, "docs/a.md", []string{"/n/docs/a.md", "/r/sub/docs/a.md"}, false},
-		{"link leading slash is root-relative", s, a, FormLink, "/docs/a.md", []string{"/r/docs/a.md"}, false},
+		{"link leading slash outside every root: root-relative first", s, a, FormLink, "/docs/a.md", []string{"/r/docs/a.md", "/docs/a.md"}, false},
+		{"link absolute under a root: as written first", s, a, FormLink, "/r/docs/a.md", []string{"/r/docs/a.md", "/r/r/docs/a.md"}, false},
+		{"link absolute into in-repo worktree", s, a, FormLink, "/r/.worktrees/w/a.md", []string{"/r/.worktrees/w/a.md", "/r/a.md", "/r/r/.worktrees/w/a.md"}, false},
 		{"link leading slash with no root is skipped", s, noRoot, FormLink, "/docs/a.md", nil, true},
+		{"link absolute under a root with no artifact root", s, noRoot, FormLink, "/r/docs/a.md", []string{"/r/docs/a.md"}, false},
 		{"link ~ expands to home as-is", s, a, FormLink, "~/a.md", []string{"/h/a.md"}, false},
 		{"backtick absolute under a root", s, a, FormBacktick, "/r/x/y.go", []string{"/r/x/y.go"}, false},
 		{"backtick absolute into in-repo worktree", s, a, FormBacktick, "/r/.worktrees/w/x/y.go", []string{"/r/.worktrees/w/x/y.go", "/r/x/y.go"}, false},
@@ -78,8 +82,8 @@ func TestBases(t *testing.T) {
 		{"backtick relative with no root is skipped", s, noRoot, FormBacktick, "docs/x.go", nil, true},
 		{"backtick ./ : resolved dir, nominal dir, root", s, a, FormBacktick, "./x.go", []string{"/r/sub/x.go", "/n/x.go", "/r/x.go"}, false},
 		{"backtick ../ dedups identical bases", s, a, FormBacktick, "../x.go", []string{"/r/x.go", "/x.go"}, false},
-		{"backtick relative: root then resolved dir", s, a, FormBacktick, "internal/x.go", []string{"/r/internal/x.go", "/r/sub/internal/x.go"}, false},
-		{"backtick trailing slash is cleaned", s, a, FormBacktick, "internal/", []string{"/r/internal", "/r/sub/internal"}, false},
+		{"backtick relative: root, resolved dir, nominal dir", s, a, FormBacktick, "internal/x.go", []string{"/r/internal/x.go", "/r/sub/internal/x.go", "/n/internal/x.go"}, false},
+		{"backtick trailing slash is cleaned", s, a, FormBacktick, "internal/", []string{"/r/internal", "/r/sub/internal", "/n/internal"}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -200,5 +204,119 @@ func TestSameNameCapsAndExcludesSelf(t *testing.T) {
 	want := []string{"a/x.go", "b/x.go", "c/x.go", "d/x.go", "e/x.go"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("sameName = %q, want %q", got, want)
+	}
+}
+
+// TestAbsoluteLinks drives bases/live/downgrade directly for the same /tmp
+// reason as TestAbsoluteRefs.
+func TestAbsoluteLinks(t *testing.T) {
+	isolateGit(t)
+	repo := realTempDir(t)
+	gitInit(t, repo)
+	writeFile(t, filepath.Join(repo, "docs", "guide.md"), "")
+	a := newArtifact(filepath.Join(repo, "CLAUDE.md"), filepath.Join(repo, "CLAUDE.md"))
+	outside := realTempDir(t)
+	noRoot := newArtifact(filepath.Join(outside, "CLAUDE.md"), filepath.Join(outside, "CLAUDE.md"))
+
+	tests := []struct {
+		name string
+		a    artifact
+		path string
+		want string // "live", "dead", "ambiguous", "skip"
+	}{
+		{"absolute link to a live file", a, repo + "/docs/guide.md", "live"},
+		{"absolute link into a worktree copy", a, repo + "/.worktrees/w/docs/guide.md", "live"},
+		{"absolute link to a missing file", a, repo + "/docs/gone.md", "dead"},
+		{"repo-root-relative link", a, "/docs/guide.md", "live"},
+		{"no root, absolute link under a known root", noRoot, repo + "/docs/guide.md", "live"},
+		{"no root, absolute link outside every root", noRoot, "/elsewhere/x.md", "skip"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := newScanner("", true)
+			s.roots = []string{repo + "/"}
+			c := Candidate{Form: FormLink, Path: tt.path}
+			bs, skip := s.bases(c, tt.a)
+			got := "dead"
+			switch {
+			case skip:
+				got = "skip"
+			case s.live(c, tt.a, bs):
+				got = "live"
+			case s.downgrade(c, tt.a, bs):
+				got = "ambiguous"
+			}
+			if got != tt.want {
+				t.Fatalf("%q = %s (bases %q), want %s", tt.path, got, bs, tt.want)
+			}
+		})
+	}
+}
+
+// lockDir makes dir unreadable for the rest of the test, restoring it first
+// so t.TempDir's cleanup can remove it.
+func lockDir(t *testing.T, dir string) {
+	t.Helper()
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+	if err := os.Chmod(dir, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+}
+
+func TestExistsFailsTowardLive(t *testing.T) {
+	dir := realTempDir(t)
+	writeFile(t, filepath.Join(dir, "locked", "f.go"), "")
+	writeFile(t, filepath.Join(dir, "file.go"), "")
+	lockDir(t, filepath.Join(dir, "locked"))
+
+	tests := []struct {
+		p    string
+		want bool
+	}{
+		{filepath.Join(dir, "file.go"), true},
+		{filepath.Join(dir, "locked", "f.go"), true},
+		{filepath.Join(dir, "locked", "unknowable.go"), true},
+		{filepath.Join(dir, "missing.go"), false},
+		{filepath.Join(dir, "file.go", "child.go"), false},
+	}
+	for _, tt := range tests {
+		if got := exists(tt.p); got != tt.want {
+			t.Errorf("exists(%q) = %v, want %v", tt.p, got, tt.want)
+		}
+	}
+}
+
+func TestRepoIndexIncompleteIsLive(t *testing.T) {
+	root := realTempDir(t)
+	writeFile(t, filepath.Join(root, "a", "x.go"), "")
+	writeFile(t, filepath.Join(root, "locked", "x.go"), "")
+	lockDir(t, filepath.Join(root, "locked"))
+
+	s := newScanner("", true)
+	if !s.repoIndex(root).hasSuffix("nowhere/x.go") {
+		t.Errorf("hasSuffix on an incomplete index = false, want true (absence unprovable)")
+	}
+	if got, want := s.sameName(root, filepath.Join(root, "gone", "x.go")), []string{"a/x.go"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("sameName = %q, want %q (what the walk did reach)", got, want)
+	}
+}
+
+func TestRepoIndexSaturated(t *testing.T) {
+	root := realTempDir(t)
+	for _, d := range []string{"a", "b", "c", "d"} {
+		writeFile(t, filepath.Join(root, d, "x.go"), "")
+	}
+	defer func(n int) { maxIndexEntries = n }(maxIndexEntries)
+	maxIndexEntries = 3
+
+	s := newScanner("", true)
+	if !s.repoIndex(root).hasSuffix("nowhere/x.go") {
+		t.Errorf("hasSuffix on a saturated index = false, want true")
+	}
+	if got := s.sameName(root, filepath.Join(root, "gone", "x.go")); got == nil || len(got) != 0 {
+		t.Errorf("sameName on a saturated index = %#v, want empty non-nil", got)
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"syscall"
 
 	"github.com/noamsto/agent-smith/internal/analyst"
 )
@@ -51,14 +52,19 @@ func canonical(p string) string {
 }
 
 type scanner struct {
-	roots []string // with trailing "/"
-	home  string
-	index map[string]*repoIndex
-	gitOK bool
+	roots    []string // with trailing "/"
+	home     string
+	realHome string
+	index    map[string]*repoIndex
+	gitOK    bool
 }
 
 func newScanner(home string, gitOK bool) *scanner {
-	return &scanner{home: home, gitOK: gitOK, index: map[string]*repoIndex{}}
+	realHome, err := filepath.EvalSymlinks(home)
+	if err != nil {
+		realHome = home
+	}
+	return &scanner{home: home, realHome: realHome, gitOK: gitOK, index: map[string]*repoIndex{}}
 }
 
 // underRoot returns the innermost known root containing p (without its
@@ -94,7 +100,7 @@ func (s *scanner) bases(c Candidate, a artifact) (paths []string, skip bool) {
 	switch c.Form {
 	case FormImport:
 		if filepath.IsAbs(p) {
-			raw = []string{p}
+			raw = []string{p, canonical(p)}
 		} else {
 			raw = []string{filepath.Join(a.Dir, p), filepath.Join(a.RealDir, p)}
 		}
@@ -103,10 +109,20 @@ func (s *scanner) bases(c Candidate, a artifact) (paths []string, skip bool) {
 		case expanded:
 			raw = []string{p}
 		case filepath.IsAbs(p):
-			if a.Root == "" {
+			// Either a filesystem path or GitHub-style repo-root-relative; probe
+			// both, leading with the reading that lands in a known repo so
+			// resolved_to and the gitignore check use it.
+			known := s.underRoot(p) != "" || s.underRoot(canonical(p)) != ""
+			raw = []string{p, canonical(p)}
+			switch {
+			case a.Root == "" && !known:
 				return nil, true
+			case a.Root == "":
+			case known:
+				raw = append(raw, a.Root+p)
+			default:
+				raw = append([]string{a.Root + p}, raw...)
 			}
-			raw = []string{a.Root + p}
 		default:
 			raw = []string{filepath.Join(a.Dir, p), filepath.Join(a.RealDir, p)}
 		}
@@ -122,7 +138,7 @@ func (s *scanner) bases(c Candidate, a artifact) (paths []string, skip bool) {
 		case hasDotPrefix(p):
 			raw = []string{filepath.Join(a.RealDir, p), filepath.Join(a.Dir, p), filepath.Join(a.Root, p)}
 		default:
-			raw = []string{filepath.Join(a.Root, p), filepath.Join(a.RealDir, p)}
+			raw = []string{filepath.Join(a.Root, p), filepath.Join(a.RealDir, p), filepath.Join(a.Dir, p)}
 		}
 	}
 	return dedupClean(raw), false
@@ -141,9 +157,11 @@ func dedupClean(paths []string) []string {
 	return out
 }
 
+// exists fails toward live: only a definite "no such path" counts as missing,
+// so a permission error never makes a present path look dead.
 func exists(p string) bool {
 	_, err := os.Stat(p)
-	return err == nil
+	return err == nil || !(errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR))
 }
 
 // knownExts are the extensions `.Ident` symbol trimming must not strip, so
@@ -265,12 +283,12 @@ func (s *scanner) downgrade(c Candidate, a artifact, bases []string) bool {
 }
 
 // firstSegmentExists reports whether any part of the tree c names is present:
-// its first segment under Root or RealDir for a relative ref, or under the
+// its first segment under Root, RealDir or Dir for a relative ref, or under the
 // containing root for an absolute one.
 func (s *scanner) firstSegmentExists(c Candidate, a artifact, bases []string) bool {
 	if !filepath.IsAbs(c.Path) && !strings.HasPrefix(c.Path, "~/") {
 		seg := firstSegment(c.Path)
-		return exists(filepath.Join(a.Root, seg)) || exists(filepath.Join(a.RealDir, seg))
+		return exists(filepath.Join(a.Root, seg)) || exists(filepath.Join(a.RealDir, seg)) || exists(filepath.Join(a.Dir, seg))
 	}
 	for _, b := range bases {
 		root := s.underRoot(b)
@@ -297,9 +315,12 @@ func firstSegment(p string) string {
 }
 
 // repoIndex is every file and directory under a repo root, repo-relative.
+// incomplete means the walk hit an unreadable subtree or maxIndexEntries, so a
+// miss proves nothing.
 type repoIndex struct {
-	paths  []string
-	byBase map[string][]string
+	paths      []string
+	byBase     map[string][]string
+	incomplete bool
 }
 
 var skipDirs = map[string]bool{
@@ -307,17 +328,28 @@ var skipDirs = map[string]bool{
 	".direnv": true, "result": true, "target": true, "dist": true,
 }
 
+var maxIndexEntries = 200000
+
 func (s *scanner) repoIndex(root string) *repoIndex {
 	if idx, ok := s.index[root]; ok {
 		return idx
 	}
 	idx := &repoIndex{byBase: map[string][]string{}}
 	_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
-		if err != nil || p == root {
-			return nil // an unreadable subtree is left out, not fatal
+		if err != nil {
+			idx.incomplete = true
+			return nil
+		}
+		if p == root {
+			return nil
 		}
 		if d.IsDir() && skipDirs[d.Name()] {
 			return filepath.SkipDir
+		}
+		if len(idx.paths) >= maxIndexEntries {
+			// A truncated walk order would make same_name arbitrary; offer none.
+			idx.paths, idx.byBase, idx.incomplete = nil, map[string][]string{}, true
+			return filepath.SkipAll
 		}
 		rel, err := filepath.Rel(root, p)
 		if err != nil {
@@ -333,6 +365,9 @@ func (s *scanner) repoIndex(root string) *repoIndex {
 }
 
 func (idx *repoIndex) hasSuffix(tok string) bool {
+	if idx.incomplete {
+		return true
+	}
 	if tok == "" {
 		return false
 	}
