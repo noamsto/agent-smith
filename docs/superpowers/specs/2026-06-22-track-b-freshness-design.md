@@ -234,7 +234,7 @@ An ambiguous token that resolves to a live path is dropped like any other.
   directory, a symlink loop — counts as live: the audit cannot prove absence.
 - **Suffix liveness.** A relative backtick ref missing under every base is still live when some
   existing repo path ends in `/<ref>` — instruction files routinely name files relative
-  to a subproject (`daemon/conn.go` for `picker/remotebridge/daemon/conn.go`). The
+  to a subproject (`daemon/conn.go` for `services/api/daemon/conn.go`). The
   lookup uses the repo walk below. Links and imports resolve file-relative by
   definition, so they do not get it.
 - **Symbol liveness.** A ref is live when stripping a trailing symbol leaves an
