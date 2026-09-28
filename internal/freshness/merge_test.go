@@ -388,3 +388,67 @@ func TestClustersSchema(t *testing.T) {
 		}
 	}
 }
+
+func TestStaleRefClusterPassesCiteCheckUnchanged(t *testing.T) {
+	dir := realTempDir(t)
+	artifact := filepath.Join(dir, "CLAUDE.md")
+	writeFile(t, artifact, "content\n")
+
+	r := Report{Dead: []Ref{{
+		ID: "d1", Artifact: artifact, Path: "old/a.go", Line: 3,
+		RuleExcerpt: "see `old/a.go`", ResolvedTo: filepath.Join(dir, "old/a.go"),
+	}}}
+
+	clusters, _, errs := Clusters(r, map[string]bool{}, nil)
+	if len(errs) != 0 {
+		t.Fatalf("errs = %v", errs)
+	}
+	if len(clusters) != 1 {
+		t.Fatalf("clusters = %d, want 1", len(clusters))
+	}
+
+	indexPath := filepath.Join(t.TempDir(), "clusters.json")
+	if err := analyst.MergeClusters(clusters, indexPath, SignalType); err != nil {
+		t.Fatal(err)
+	}
+
+	indexData, err := os.ReadFile(indexPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var index []analyst.ClusterIndexEntry
+	if err := json.Unmarshal(indexData, &index); err != nil {
+		t.Fatal(err)
+	}
+	if len(index) != 1 {
+		t.Fatalf("index entries = %d, want 1", len(index))
+	}
+	clusterFile := filepath.Join(filepath.Dir(indexPath), index[0].File)
+
+	proposalPath := filepath.Join(t.TempDir(), "p-1.json")
+	content := `{"id":"glitch-stale","implicated_artifact":"` + artifact + `",
+	  "signal_type":"stale-ref","fix_type":"fix-stale","confidence":"high",
+	  "evidence":["` + "`old/a.go` (line 3) → `new/a.go`" + `"],
+	  "citations":[],
+	  "diagnosis":"d","proposed_change":"c","reason_log":"r"}`
+	writeFile(t, proposalPath, content)
+
+	reasonLogDir := filepath.Join(t.TempDir(), "reason-log")
+	result, err := analyst.ApplyCiteCheck(proposalPath, clusterFile, reasonLogDir, "2026-09-28")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "ok" {
+		t.Fatalf("status = %q, want ok", result.Status)
+	}
+	after, err := os.ReadFile(proposalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != content {
+		t.Errorf("proposal file was modified:\nbefore: %s\nafter:  %s", content, after)
+	}
+	if _, err := os.Stat(reasonLogDir); !os.IsNotExist(err) {
+		t.Errorf("reasonLogDir = %v exists, want no reason-log written", err)
+	}
+}

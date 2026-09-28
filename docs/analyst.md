@@ -22,7 +22,8 @@ it verifies every cited window (`evidence` refs and `citations[]`) and quote aga
 the same cluster file. A cited window absent from the cluster, or a quote it can't
 find, rejects the proposal (renamed to `<file>.cite-rejected`, reason-log entry
 written); a `high` proposal with any evidence ref or citation lacking a verified
-quote, or no citations at all, is capped to `medium`.
+quote, or no citations at all, is capped to `medium`. A `stale-ref` cluster has no
+session windows to cite, so its proposals pass `ok` untouched.
 
 ## Commands
 
