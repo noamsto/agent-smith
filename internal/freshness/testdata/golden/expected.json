@@ -1,0 +1,14 @@
+{
+  "dead": [
+    {"file": "CLAUDE.md", "line": 19, "path": "docs/gone.md"},
+    {"file": "CLAUDE.md", "line": 21, "path": "docs/removed.md"},
+    {"file": "CLAUDE.md", "line": 23, "path": "scripts/old.sh"},
+    {"file": "CLAUDE.md", "line": 25, "path": "internal/pkg/gone.go"},
+    {"file": "AGENTS.md", "line": 5, "path": "docs/ancient.md"}
+  ],
+  "ambiguous_missing": [
+    {"file": "CLAUDE.md", "line": 27, "path": "docs/example-output.md"},
+    {"file": "CLAUDE.md", "line": 42, "path": "origin/main"},
+    {"file": "CLAUDE.md", "line": 42, "path": "types/node"}
+  ]
+}
