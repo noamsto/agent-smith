@@ -132,14 +132,14 @@ func Escalate(props []Proposal, verdicts map[string]Verdict, logDir, date string
 		if e.Outcome == OutcomeUncited {
 			continue
 		}
-		known[artifactPath(e.Artifact)+"\x00"+e.Signal] = true
+		known[ArtifactKey(e.Artifact)+"\x00"+e.Signal] = true
 	}
 
 	var out []Escalation
 	for _, p := range props {
 		esc := Escalation{ID: p.ID}
 		switch {
-		case known[artifactPath(p.ImplicatedArtifact)+"\x00"+p.SignalType]:
+		case known[ArtifactKey(p.ImplicatedArtifact)+"\x00"+p.SignalType]:
 			esc.Skipped = "already in the reason-log"
 		case file == nil:
 			esc.Skipped = "issue filing disabled"

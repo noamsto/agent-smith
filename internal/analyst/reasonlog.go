@@ -111,14 +111,15 @@ type Entry struct {
 	Artifact string // implicated_artifact, may carry a #section suffix
 	Signal   string
 	Outcome  string
+	Evidence []string
 	Path     string
 }
 
-// artifactPath strips an optional #section suffix and normalizes a worktree path
+// ArtifactKey strips an optional #section suffix and normalizes a worktree path
 // to its canonical form, so a cluster's bare artifact and an entry's
 // `path#section` (possibly recorded against a since-deleted worktree) compare
 // equal. Symlink resolution is best-effort: an unresolvable path is cleaned only.
-func artifactPath(artifact string) string {
+func ArtifactKey(artifact string) string {
 	p := artifact
 	if i := strings.IndexByte(p, '#'); i >= 0 {
 		p = p[:i]
@@ -131,9 +132,10 @@ func artifactPath(artifact string) string {
 }
 
 var (
-	headingRe  = regexp.MustCompile(`(?m)^# (.+)$`)
-	artifactMd = regexp.MustCompile(`(?m)^\*\*Artifact:\*\* (.+?)\s*$`)
-	signalMd   = regexp.MustCompile(`(?m)^\*\*Signal:\*\* (.+?)\s*$`)
+	headingRe      = regexp.MustCompile(`(?m)^# (.+)$`)
+	artifactMd     = regexp.MustCompile(`(?m)^\*\*Artifact:\*\* (.+?)\s*$`)
+	signalMd       = regexp.MustCompile(`(?m)^\*\*Signal:\*\* (.+?)\s*$`)
+	evidenceHeadMd = regexp.MustCompile(`(?m)^## Evidence$`)
 )
 
 // parseEntry extracts the structured fields from one reason-log markdown body.
@@ -150,6 +152,17 @@ func parseEntry(content, path string) Entry {
 	}
 	if m := outcomeRe.FindStringSubmatch(content); m != nil {
 		e.Outcome = m[1]
+	}
+	if loc := evidenceHeadMd.FindStringIndex(content); loc != nil {
+		block := content[loc[1]:]
+		if end := strings.Index(block, "\n## "); end >= 0 {
+			block = block[:end]
+		}
+		for _, line := range strings.Split(block, "\n") {
+			if item, ok := strings.CutPrefix(line, "- "); ok {
+				e.Evidence = append(e.Evidence, strings.TrimRight(item, " \t\r"))
+			}
+		}
 	}
 	return e
 }
@@ -180,7 +193,7 @@ func rejectedKeys(entries []Entry) map[string]bool {
 		if e.Outcome != OutcomeClosed && e.Outcome != OutcomeRejected {
 			continue
 		}
-		keys[artifactPath(e.Artifact)+"\x00"+e.Signal] = true
+		keys[ArtifactKey(e.Artifact)+"\x00"+e.Signal] = true
 	}
 	return keys
 }
@@ -195,7 +208,7 @@ func FilterRejected(clusters []Cluster, entries []Entry) (kept, skipped []Cluste
 		return clusters, nil
 	}
 	for _, c := range clusters {
-		if rejected[artifactPath(c.Artifact)+"\x00"+c.SignalType] {
+		if rejected[ArtifactKey(c.Artifact)+"\x00"+c.SignalType] {
 			skipped = append(skipped, c)
 			continue
 		}
