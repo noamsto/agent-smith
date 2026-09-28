@@ -1,25 +1,24 @@
 # Track B v1 — Instruction Freshness Audit (file/path references)
 
 **Issue:** #45
-**Status:** design
+**Status:** v1
 **Date:** 2026-06-22
 
 ## 1. Problem
 
-Agent-smith ships only **Track A** — backward-looking glitch mining (`extractor` →
+Agent-smith's **Track A** is backward-looking glitch mining (`extractor` →
 `incidents.db` → `analyst cluster` → Oracle). **Track B**, the forward-facing
-freshness audit specified in `docs/specs/2026-06-01-agent-smith-design.md §5`, was
-never built. The `fix-stale` fix-type is plumbed end-to-end through Oracle, Skeptic,
-Editor, and `assemble` validation — but **nothing generates it**. A stale reference
-in an instruction file (a rule naming a file that was renamed, moved, or deleted) is
-caught only *reactively*: it must first cause a glitch, that glitch must cluster
-across ≥5 sessions, and the Oracle must then infer staleness through the
-ubiquity noise that dominates Track A clusters. That path is leaky by construction,
-so stale references sit undetected until they break something.
+freshness audit from `docs/specs/2026-06-01-agent-smith-design.md §5`, covers what
+Track A cannot see. The `fix-stale` fix-type is plumbed end-to-end through Oracle,
+Skeptic, Editor, and `assemble` validation, but Track A can only reach it
+*reactively*: a stale reference in an instruction file (a rule naming a file that was
+renamed, moved, or deleted) must first cause a glitch, that glitch must cluster across
+≥5 sessions, and the Oracle must then infer staleness through the ubiquity noise that
+dominates Track A clusters. That path is leaky by construction, so stale references
+sit undetected until they break something.
 
-Track B v1 closes this: it **proactively** detects instruction rules that reference
-repo files/artifacts which no longer exist, and routes each into the existing
-`fix-stale` pipeline.
+Track B v1 **proactively** detects instruction rules that reference files which no
+longer exist, and routes each into the existing `fix-stale` pipeline.
 
 ### Why this is higher-precision than Track A
 
@@ -31,145 +30,292 @@ repo files/artifacts which no longer exist, and routes each into the existing
 | Timing | after a failure, buried in noise | before any failure |
 
 A Track B `dead` verdict is **actionable on its own** — it does not need the
-`min-sessions` threshold (default 5) Track A applies to kill one-off noise.
+`--min-sessions` threshold (default 5) Track A applies to kill one-off noise.
 
 ## 2. Scope
 
-**In scope (v1):** file-path and artifact references — does the file/dir/skill the
-rule names still exist, relative to its repo.
+**In scope (v1):** file-path references — does the file or directory the rule names
+still exist.
 
-**Out of scope (later slices, YAGNI):** CLI flags/subcommands, library APIs, version
-numbers, URLs, web explorers (context7/WebSearch/WebFetch), and instruction files
-that have never appeared in a session.
+**Out of scope (later slices):** CLI flags/subcommands, library APIs, version
+numbers, URLs, web explorers (context7/WebSearch/WebFetch), instruction files never
+seen in a session or reachable from one by `@import`, and folding freshness into
+`mine`/`run`.
 
-**Decisions locked during brainstorming:**
+**Decisions:**
 
-- **Verification surface:** file/path references only — bulletproof and deterministic.
+- **Verification surface:** file/path references only — deterministic.
 - **Extraction:** hybrid — deterministic candidate generation, with an LLM adjudicator
   invoked *only* on ambiguous-and-missing candidates.
-- **Integration:** feed the existing Oracle. Track B emits `stale-ref` cluster entries;
+- **Integration:** feed the existing Oracle. Track B writes `stale-ref` cluster files;
   the Oracle drafts the concrete `fix-stale`/`remove` change. Propose/apply untouched.
-- **Audit set:** the distinct instruction artifacts already present in `incidents.db`.
+- **Audit set:** the distinct instruction artifacts in `incidents.db`, plus the files
+  they `@import` (§3.1).
 
 ## 3. Architecture
 
-Track B is purely a new **producer** of `clusters.json` entries. Everything downstream
-(Oracle → Skeptic → `assemble` → applier) is reused unchanged except a small
-additive branch in the Oracle prompt.
+Track B is a new **producer** of cluster files. Everything downstream (Oracle →
+Skeptic → `assemble` → applier) is reused; the Oracle gains a self-contained
+`stale-ref` section and the Skeptic one line on how to verify it.
 
 ```
-incidents.db (distinct artifact list)
-   → analyst freshness            (Go, deterministic, no LLM)
-        → { dead claims, ambiguous-missing candidates }
+incidents.db (distinct canonical artifacts)
+   → analyst freshness scan     (Go, deterministic, no LLM)  → freshness.json
+        { dead, ambiguous_missing }
    → /agent-smith:freshness skill
-        → LLM-adjudicate ambiguous-missing only  (default-drop on uncertainty)
-        → write stale-ref cluster files, merge into clusters.json
-   → existing propose phase:
-        Oracle (stale-ref branch) → Skeptic → assemble → applier
+        → LLM-adjudicate ambiguous_missing only  (default-drop)  → adj-*.json
+   → analyst freshness merge    (Go)  → clusters/<id>.json + clusters.json entries
+   → existing propose phase: Oracle (stale-ref section) → Skeptic → assemble → applier
 ```
 
-### 3.1 `internal/freshness` package + `analyst freshness` subcommand
+### 3.1 `internal/freshness` + `analyst freshness scan`
 
-Lives under `analyst` (reuses its duckdb access and cluster-writer; no fourth binary).
-Pure detection, no LLM:
+`analyst freshness` is a subcommand of the existing `analyst` binary (no new binary),
+with two modes, `scan` and `merge`. `scan` is pure detection:
 
-1. Query `incidents.db` for the distinct `artifact` list (the canonicalized files
-   Track A saw loaded).
-2. For each artifact still present on disk: read it, run **deterministic candidate
-   extraction** (§4.1).
-3. Classify each candidate → *confident claim* / *ambiguous* / *skip* (§4.2) and resolve
-   each non-skip candidate against the filesystem.
-4. Emit JSON: `dead` (confident claim, resolves to a missing path) and
-   `ambiguous_missing` (ambiguous form, also missing — needs adjudication). Live and
-   skipped candidates are dropped.
+1. **Audit set.** `SELECT DISTINCT` (sorted) the candidate artifacts from `incidents`,
+   canonicalized with the *same* SQL worktree expression `clusterSQL` uses (one shared
+   Go constant, so the two cannot drift). `--artifact <path>` (repeatable) adds paths
+   directly; `--artifact-prefix <repo root>` keeps only artifacts under that root, like
+   `analyst cluster`. An artifact missing on disk is skipped and counted.
+2. **Import expansion.** Each audited artifact's `@import` targets that exist on disk
+   are audited too, transitively in sorted order (a visited set keyed on the real path breaks cycles
+   and dedups symlinked copies). Extractor candidates are only `CLAUDE.md` files, and a
+   common layout is a `CLAUDE.md` that is just `See @AGENTS.md` — without this step the
+   file carrying the rules would never be audited. An expanded artifact is recorded
+   under its import-resolved path (not its symlink-resolved one), matching how
+   `analyst cluster` re-attributes pointer artifacts.
+3. For each audited artifact: extract candidates (§4.1), classify (§4.2), resolve
+   (§4.3).
+4. Emit `freshness.json` (§5.1). Live and skipped candidates are dropped.
 
-### 3.2 `/agent-smith:freshness` skill (orchestrator layer)
+On the real corpus most canonical candidates are missing on disk (repos without a
+root `CLAUDE.md`, and the centralized worktree layout in §4.3), so the audit set is
+small — the few live `CLAUDE.md` files and what they import.
 
-1. Bootstrap (as the other skills do), run `analyst freshness`.
-2. For each `ambiguous_missing` candidate, dispatch an LLM adjudicator subagent:
-   *"Is this token a genuine claim that a repo file exists, or an example/runtime/prose
-   path?"* — **default-drop on uncertainty** (mirrors the Skeptic's default-drop).
-3. Group all confirmed-stale references **by artifact** and write one `stale-ref`
-   cluster file per artifact, appended to `clusters.json`.
-4. Report the dead references found (and the ambiguous ones dropped), then hand off to
+The audit runs on the filesystem, not git: a file that exists in the main checkout is
+live whether or not it is tracked.
+
+### 3.2 `/agent-smith:freshness` skill (`commands/freshness.md`)
+
+1. Bootstrap `$BIN` exactly as the other command files do, then
+   `analyst freshness scan --db incidents.db --out freshness.json` (`repo` argument →
+   `--artifact-prefix "$(git rev-parse --show-toplevel)"`). Precondition:
+   `incidents.db` exists — otherwise run `/agent-smith:mine` first.
+2. For each artifact with `ambiguous_missing` refs, dispatch one adjudicator subagent
+   (general-purpose, Agent tool) with that artifact's refs. It reads the artifact
+   around each line and answers, per ref: *is this token a genuine claim that a file
+   exists at this path in this repo, or an example / placeholder / runtime output /
+   other-repo / branch-or-slug token?* It writes
+   `[{"id", "verdict": "stale"|"drop", "reason"}]` to `$RUN_DIR/adj-<i>.json`.
+   **Default-drop:** only an explicit `stale` keeps a ref.
+3. `analyst freshness merge --report freshness.json --adjudications-dir "$RUN_DIR"
+   --out clusters.json --reason-log-dir reason-log`.
+4. Report dead refs, ambiguous refs kept/dropped, clusters written; hand off to
    `/agent-smith:propose`.
+
+### 3.3 `analyst freshness merge`
+
+1. Kept refs = every `dead` ref ∪ each `ambiguous_missing` ref whose `id` has
+   `verdict: "stale"` in some `adj-*.json`. An unparseable adjudication file is
+   reported on stderr and contributes nothing (default-drop); unknown ids are ignored.
+2. **Per-ref suppression.** A ref is dropped (and logged) when a `closed`/`rejected`
+   reason-log entry with `**Signal:** stale-ref` for the same artifact lists it in its
+   `## Evidence` section — matched as an evidence bullet that *opens* with
+   `` `<path>` ``, the form the Oracle's stale-ref evidence strings are required to
+   take (a repoint target later in the same bullet does not match). Suppression is per ref, not per
+   artifact: a declined PR about one reference must not blind the audit to new stale
+   references in the same file, and the most-referenced artifacts (the global
+   `CLAUDE.md`, shared rule files) are exactly the ones that would otherwise go dark.
+3. Group the remaining refs **by artifact** → one `stale-ref` cluster per artifact
+   (§5.2).
+4. Merge into the index: remove every existing `stale-ref` entry from `clusters.json`
+   and delete its per-cluster file, write the new files under `clusters/`, append the
+   new entries. Track A entries and files are left untouched. A missing
+   `clusters.json` is created.
+
+### 3.4 Ordering with `analyst cluster`
+
+`analyst cluster` rewrites `clusters.json` from its own clusters and prunes every
+per-cluster file it did not write, so it removes `stale-ref` clusters. The order is
+therefore **mine → freshness → propose**, and freshness is re-run after any later
+mine. Freshness is cheap to regenerate: the scan is deterministic, and only the
+ambiguous refs cost an adjudicator call.
 
 ## 4. Detection detail
 
-### 4.1 Candidate extraction (deterministic)
+### 4.1 Candidate extraction
 
-Scan the artifact for path-shaped tokens in these forms:
+Fenced code blocks (```` ``` ```` / `~~~`) are skipped entirely — they hold commands
+and examples. Outside them, three forms:
 
-- **`@imports`** — `@path` / `@~/path` (CLAUDE.md import syntax).
-- **Markdown local links** — `[text](./path)` / `[text](path/to/file)` (non-URL targets).
-- **Backtick paths** — inline-code tokens that are repo-relative *with* a separator.
+- **`@import`** — `@path` at the start of a line or after whitespace, outside inline
+  code (Claude Code does not evaluate imports inside code). Trailing `.,;:)` is
+  stripped.
+- **Markdown local link** — `[text](target)` / `![alt](target)`, outside inline code.
+  An optional `"title"` and `<…>` wrapping are removed; the `#fragment` is stripped;
+  a target that is only a fragment is ignored.
+- **Backtick path** — an inline code span whose content has no whitespace. A trailing
+  line reference — `:N`, `:N-M`, `:N:C`, `#LN`, `#LN-LM`, `#LN-M` — is stripped.
+
+Each candidate carries its artifact, 1-based line, and the trimmed line text.
 
 ### 4.2 Classification
 
-- **Skip** (never flagged): `/tmp...`, tokens containing `$` (vars), glob metacharacters
-  (`* ? [ ]`), URLs (`scheme://`), absolute paths outside any known repo root, and bare
-  filenames with no path separator.
-- **Confident claim**: `@imports`, markdown local links, and backtick repo-relative paths
-  with a separator. Resolved directly — **exists → drop, missing → `dead`.**
-- **Ambiguous**: a path-shaped token that is neither clearly skip nor clearly confident.
-  Only sent to the LLM adjudicator **if it is also missing on disk**; an ambiguous token
-  that resolves to a live file is dropped regardless.
+**Skip** (never flagged), any form:
 
-### 4.3 Resolution rules
+- URLs and URIs (`scheme://`, `mailto:`), and tokens containing `$` (variables),
+  glob/brace metacharacters `* ? [ ] { }`, placeholder markers `< >`, `|`, `=`,
+  quotes, `(`, `)`, `,`, `…`, or `...`.
+- Tokens starting with `-` (flags), bare `~`, or `~user`.
+- Placeholder paths: a segment `foo`, `bar`, `baz`, `qux`, or `xxx`, or a `path/to/`
+  run.
+- `/tmp/…`, and any absolute path (after `~/` expansion) outside every known repo root
+  (§4.3).
+- Backtick form only: bare filenames with no `/`, tokens containing `@` (package
+  scopes, git refs), and relative paths when the artifact has no repo root (no base to
+  resolve against).
 
-- Resolve relative to the **artifact's own repo root**, reusing `canonicalizeRepoPrefix`
-  (worktree-aware: in-repo `.worktrees/` and sibling `<repo>-worktrees/`).
-- `@imports` resolve relative to the **importing file's directory**, with `~` expansion
-  to `$HOME`.
+**Ambiguous** (flagged only if missing, and only after adjudication):
+
+- A backtick path whose last segment has no extension, with no trailing `/` and no
+  `./`/`../` prefix — `origin/main`, `owner/repo`, `feat/12-x`, `cmd/tool`.
+- A backtick path on a line containing an example marker (`e.g.`, `i.e.`,
+  `for example`, `such as`, `example`).
+- A backtick path whose first segment exists under no resolution base — nothing of
+  the tree it names is present, so it may be another repo's path.
+- An `@import` whose last segment has no extension (`@me`, `@types/node`,
+  `@anthropic-ai/sdk`).
+- A confident ref that is missing **and** gitignored (`git check-ignore`) — a
+  local-only or generated path (`.claude/settings.local.json`, `result/bin/x`) that an
+  instruction may tell the agent to create. When `git` is unavailable or errors, every
+  missing confident ref in that repo is treated as ambiguous: the check fails toward
+  adjudication, never toward `dead`.
+
+**Confident** — every other `@import`, markdown link, and backtick path. Resolved
+directly: **exists → dropped, missing → `dead`.**
+
+An ambiguous token that resolves to a live path is dropped like any other.
+
+### 4.3 Resolution
+
+- **Repo root** of an artifact: walk up from the artifact's symlink-resolved directory
+  to the nearest ancestor containing `.git` (a directory or, in a worktree, a file).
+  The **known repo roots** are the roots of every audited artifact.
+- **Bases tried per form** — a candidate is live if it exists under **any** base:
+  - `@import`: the importing file's directory (both its nominal and symlink-resolved
+    forms); `~/` expands to `$HOME`; an absolute path is used as-is.
+  - Markdown link: the artifact's directory (nominal and resolved); a leading `/` is
+    repo-root-relative.
+  - Backtick relative path: the repo root and the artifact's resolved directory.
+  - Absolute path (any form): as-is, then canonicalized with the worktree rules
+    `canonicalizeRepoPrefix` applies (in-repo `.worktrees/<name>/` and sibling
+    `<repo>-worktrees/<name>/` → the main repo), so a reference into a removed
+    worktree is checked against the main checkout.
+- "Exists" is `os.Stat` success (file or directory; symlinks followed, so a dangling
+  symlink is missing).
+- **Suffix liveness.** A relative ref missing under every base is still live when some
+  existing repo path ends in `/<ref>` — instruction files routinely name files relative
+  to a subproject (`daemon/conn.go` for `picker/remotebridge/daemon/conn.go`). The
+  lookup uses the repo walk below.
+- **Symbol liveness.** A ref is live when stripping a trailing symbol leaves an
+  existing path: `:Ident` or `#anchor` after a file, or `.Ident` after an existing file
+  or directory (`internal/analyst.ClusterDB`, `cluster.go:ClusterDB`). `Ident` is
+  letter-led and, for `.Ident`, not a known file extension — so `docs/plan.md` is not
+  kept alive by a `docs/plan/` directory.
 - **A path that exists is never flagged** — zero false positives on live files is the
   hard contract.
+- For a missing ref, `resolved_to` is the path under the first base, and `same_name`
+  lists up to 5 repo-relative files elsewhere in the repo with the same basename —
+  the likely new location of a moved file. The repo is walked once, lazily, the first
+  time one of its refs is missing under every base (the walk also backs suffix
+  liveness); `.git`, `node_modules`, `vendor`, `.worktrees`, `.direnv`,
+  `result`, `target`, and `dist` are not descended.
 
-## 5. The `stale-ref` cluster record
+Canonicalization caveat: artifacts under a centralized worktree dir
+(`<root>/.worktrees/<owner>/<repo>/<branch>/`) canonicalize to a path that does not
+exist and are skipped as missing — the same way `analyst cluster` drops them. Their
+main-checkout copies are in the audit set on their own.
 
-Track B writes cluster files in the schema the Oracle already consumes, with:
+## 5. Records
 
-- `signal_type: "stale-ref"`
-- `artifact`, `artifact_content` (so the Oracle sees the rules in context).
-- In place of session `incidents`, an **`evidence`** array: one entry per dead reference
-  — `{ path, line, rule_excerpt, resolved_to }`.
-- These entries are written **after** `clusterSQL`'s `HAVING min-sessions` gate, so they
-  are never subject to it — a `stale-ref` cluster is actionable on its own.
+### 5.1 `freshness.json` (scan output)
+
+```json
+{
+  "scanned": ["<artifact>", "..."],
+  "skipped": [{"artifact": "<path>", "reason": "missing | unreadable: …"}],
+  "dead": [Ref],
+  "ambiguous_missing": [Ref]
+}
+```
+
+`Ref` = `{id, artifact, form, path, line, rule_excerpt, resolved_to, same_name}` —
+`id` is a stable hash of artifact + line + path; `form` is `import|link|backtick`;
+`path` is the token as written (suffixes stripped); `rule_excerpt` is the trimmed line,
+capped.
+
+### 5.2 The `stale-ref` cluster file
+
+The same `Cluster` schema the Oracle consumes, with:
+
+- `cluster_id: "stale-ref::<artifact>"`, `signal_type: "stale-ref"`.
+- `artifact`, `artifact_content` (truncated like Track A's), `artifact_exists: true`.
+- `incidents: []`, `distinct_sessions: 0`, `recent_sessions: 0`,
+  `likely_resolved: false`, `last_seen: ""`.
+- `total_incidents` = the number of evidence entries.
+- An **`evidence`** array, one entry per stale reference:
+  `{path, line, rule_excerpt, resolved_to, same_name}`.
+
+These clusters never pass through `clusterSQL`, so its `HAVING` min-sessions gate
+never applies to them. The index entry is a normal `ClusterIndexEntry`
+(`sampled_incidents: 0`).
 
 ## 6. Integration touch-points
 
-- **`agents/oracle.md`** — add a `stale-ref` diagnosis branch: input is the artifact
-  content + the `evidence` list; output a `fix-stale` (repoint the reference) or `remove`
-  (drop the rule) proposal, or `skip` if the Oracle judges the reference benign. The
-  `fix-stale` type, Skeptic verification, Editor application, and `assemble` validation
-  already exist — **no change required there.**
-- **No change** to `extractor`, `cluster`, `propose.md`, `apply.md`, or the applier.
+- **`agents/oracle.md`** — a self-contained `stale-ref` section: input is
+  `artifact_content` + `evidence[]` (no incidents); output one proposal — `fix-stale`
+  (repoint, typically to a `same_name` hit, or correct the path), `remove` (drop a rule
+  whose target is gone), or `skip` (the reference is benign). Each `evidence` string
+  opens with the ref's `path` in backticks — the key per-ref suppression matches on.
+  In a mixed cluster the proposal fixes the refs it judges stale and cites only those;
+  benign refs are left out rather than dragging the whole proposal to `skip`. `fix-stale`, `assemble`
+  validation, and Editor application already exist.
+- **`agents/skeptic.md`** — one line: for a `stale-ref` cluster, verify each cited path
+  is still missing on disk and any repoint target exists; there are no windows or
+  session counts to check.
+- **`internal/analyst`** — `Cluster` gains an optional `evidence` field (omitted for
+  Track A); an exported merge writer; the shared canonicalization SQL; an audit-set
+  query.
+- **No change** to `extractor`, `propose.md`, `apply.md`, `run.md`, or the applier.
 
 ## 7. Error handling
 
-- An artifact in `incidents.db` that no longer exists on disk → skipped (Track A already
-  drops these; freshness does the same).
-- An unreadable artifact → logged to stderr, skipped, run continues.
-- The LLM adjudicator erroring or returning no verdict → treat as drop (default-drop on
-  unverified, consistent with the Skeptic).
-- A `stale-ref` cluster whose artifact the Oracle judges benign → `skip` proposal, logged
-  to the reason-log like any other skip (so it is not re-surfaced every run).
+- An artifact that no longer exists on disk → skipped and counted.
+- An unreadable artifact → reported in `skipped`, run continues.
+- The adjudicator erroring, writing no file, or returning an unknown verdict → drop.
+- A benign reference → the Oracle's `skip`. Only `closed`/`rejected` entries suppress
+  (per ref, §3.3); a `skip` entry is recorded `open` like Track A's skips, so a benign
+  ref is re-diagnosed on the next run.
 
 ## 8. Testing
 
-- **Unit (`internal/freshness`):** the claim-form classifier (confident / ambiguous /
-  skip), path resolution + worktree canonicalization, and the skiplist (`/tmp`, `$vars`,
-  globs, URLs, bare filenames).
-- **Golden fixture:** a `CLAUDE.md` mixing live refs, dead refs, example paths, `/tmp`
-  runtime paths, `$VAR` paths, and URLs → assert **exactly** the genuine dead references
-  are emitted and **zero false positives**.
-- **Schema test:** an emitted `stale-ref` cluster parses as an Oracle-consumable cluster.
-- The LLM adjudication is orchestrator-layer; it is tested at the deterministic boundary
-  (what `analyst freshness` marks `ambiguous_missing`).
-
-## 9. Out of scope / future
-
-- Flag/subcommand freshness (needs per-tool `--help` parsing).
-- API/library/version freshness via web explorers (context7/WebSearch/WebFetch) — the
-  full Track B design.
-- Auditing instruction files never seen in a session (glob-discovery).
-- Folding freshness into `mine`/`run` as an automatic step (v1 is a standalone skill).
+- **Unit (`internal/freshness`):** extraction per form (fenced blocks and inline code
+  excluded for imports/links), the classifier (confident / ambiguous / skip — every
+  skip rule), resolution (per-form bases, worktree canonicalization of absolute paths,
+  `@import` `~` expansion, symlinked artifacts, suffix and symbol liveness, line-range
+  stripping, gitignored-missing → ambiguous), import expansion with a cycle.
+- **Golden fixture** (`internal/freshness/testdata/golden/`): a `CLAUDE.md` mixing
+  live refs, dead refs, example paths, `/tmp` paths, `$VAR` paths, URLs, placeholders,
+  and fenced blocks → `dead` is exactly the genuine dead refs, and no live path appears
+  in `dead` or `ambiguous_missing`.
+- **DB path:** a constructed `incidents.db` whose candidates include a worktree copy
+  of the fixture → the audit set is the canonical artifact.
+- **Schema/merge:** a written `stale-ref` file decodes as an `analyst.Cluster` with
+  `evidence`; merge preserves Track A entries and files and replaces prior `stale-ref`
+  ones; a subsequent `analyst cluster` run removes the `stale-ref` clusters (§3.4); a
+  closed/rejected reason-log entry suppresses exactly the refs its evidence names,
+  and a new ref in the same artifact still produces a cluster.
+- The LLM adjudication is tested at its deterministic boundary: what `scan` marks
+  `ambiguous_missing`, and how `merge` treats adjudication files (keep on `stale`,
+  drop otherwise, unparseable file → nothing kept).
