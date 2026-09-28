@@ -84,7 +84,12 @@ with two modes, `scan` and `merge`. `scan` is pure detection:
    common layout is a `CLAUDE.md` that is just `See @AGENTS.md` — without this step the
    file carrying the rules would never be audited. An expanded artifact is recorded
    under its import-resolved path (not its symlink-resolved one), matching how
-   `analyst cluster` re-attributes pointer artifacts.
+   `analyst cluster` re-attributes pointer artifacts. An import is followed only when
+   its symlink-resolved target lies under the importing artifact's repo root or
+   `$HOME`, outside `/proc`, `/sys`, and `/dev`, and is a regular file of at most
+   1 MiB — its content is embedded in a cluster file, so an import must not pull
+   arbitrary files into the pipeline. The import ref itself is still resolved and
+   reported either way.
 3. For each audited artifact: extract candidates (§4.1), classify (§4.2), resolve
    (§4.3).
 4. Emit `freshness.json` (§5.1). Live and skipped candidates are dropped.
@@ -102,15 +107,20 @@ live whether or not it is tracked.
    `analyst freshness scan --db incidents.db --out freshness.json` (`repo` argument →
    `--artifact-prefix "$(git rev-parse --show-toplevel)"`). Precondition:
    `incidents.db` exists — otherwise run `/agent-smith:mine` first.
-2. For each artifact with `ambiguous_missing` refs, dispatch one adjudicator subagent
-   (general-purpose, Agent tool) with that artifact's refs. It reads the artifact
-   around each line and answers, per ref: *is this token a genuine claim that a file
-   exists at this path in this repo, or an example / placeholder / runtime output /
-   other-repo / branch-or-slug token?* It writes
-   `[{"id", "verdict": "stale"|"drop", "reason"}]` to `$RUN_DIR/adj-<i>.json`.
-   **Default-drop:** only an explicit `stale` keeps a ref.
-3. `analyst freshness merge --report freshness.json --adjudications-dir "$RUN_DIR"
-   --out clusters.json --reason-log-dir reason-log`.
+2. For each artifact with `ambiguous_missing` refs, dispatch one
+   `agent-smith:adjudicator` subagent (`agents/adjudicator.md`, tools `Read, Write`)
+   with that artifact's refs. The artifact text comes from repos the user cloned, so
+   the adjudicator treats it as data and has no tool that could act on an injected
+   instruction. It reads the artifact around each line and answers, per ref: *is
+   this token a genuine claim that a file exists at this path in this repo, or an
+   example / placeholder / file-to-be-created / runtime output / other-repo /
+   branch-or-slug token?* It writes `[{"id", "verdict": "stale"|"drop", "reason"}]`
+   to `<run dir>/adj-<i>.json`, where the run dir comes from
+   `mktemp -d /tmp/agentsmith-fresh.XXXXXX` (outside `apply`'s `/tmp/agent-smith-*`
+   pickup glob). **Default-drop:** only an explicit `stale` keeps a ref.
+3. `analyst freshness merge --report freshness.json --adjudications-dir "<run dir>"
+   --out clusters.json --reason-log-dir reason-log`. A non-empty adjudications dir
+   that cannot be listed is an error, not an empty verdict set.
 4. Report dead refs, ambiguous refs kept/dropped, clusters written; hand off to
    `/agent-smith:propose`.
 
@@ -147,7 +157,9 @@ ambiguous refs cost an adjudicator call.
 ### 4.1 Candidate extraction
 
 Fenced code blocks (```` ``` ```` / `~~~`) are skipped entirely — they hold commands
-and examples. Outside them, three forms:
+and examples. A fence marker is recognised at any indentation (fences nested in list
+items sit 4+ spaces in); over-skipping is the safe direction. Outside fences, three
+forms:
 
 - **`@import`** — `@path` at the start of a line or after whitespace, outside inline
   code (Claude Code does not evaluate imports inside code). Trailing `.,;:)` is
@@ -164,7 +176,9 @@ Each candidate carries its artifact, 1-based line, and the trimmed line text.
 
 **Skip** (never flagged), any form:
 
-- URLs and URIs (`scheme://`, `mailto:`), and tokens containing `$` (variables),
+- URLs and URIs (`scheme://`, `//host/…`, `mailto:`), and scheme-less URLs whose
+  first segment is a hostname followed by `/` (`github.com/o/r`, `pkg.go.dev/fmt`).
+- Tokens containing `$` (variables),
   glob/brace metacharacters `* ? [ ] { }`, placeholder markers `< >`, `|`, `=`,
   quotes, `(`, `)`, `,`, `…`, or `...`.
 - Tokens starting with `-` (flags), bare `~`, or `~user`.
@@ -204,16 +218,20 @@ An ambiguous token that resolves to a live path is dropped like any other.
   The **known repo roots** are the roots of every audited artifact.
 - **Bases tried per form** — a candidate is live if it exists under **any** base:
   - `@import`: the importing file's directory (both its nominal and symlink-resolved
-    forms); `~/` expands to `$HOME`; an absolute path is used as-is.
-  - Markdown link: the artifact's directory (nominal and resolved); a leading `/` is
-    repo-root-relative.
-  - Backtick relative path: the repo root and the artifact's resolved directory.
+    forms); `~/` expands to `$HOME`.
+  - Markdown link: the artifact's directory (nominal and resolved). An absolute
+    target is also tried repo-root-relative (GitHub style); that base comes first
+    only when the target lies under no known root.
+  - Backtick relative path: the repo root, the artifact's resolved directory, and
+    its nominal directory (a symlinked `~/.claude/CLAUDE.md` names files beside the
+    symlink as well as beside its target).
   - Absolute path (any form): as-is, then canonicalized with the worktree rules
     `canonicalizeRepoPrefix` applies (in-repo `.worktrees/<name>/` and sibling
     `<repo>-worktrees/<name>/` → the main repo), so a reference into a removed
     worktree is checked against the main checkout.
-- "Exists" is `os.Stat` success (file or directory; symlinks followed, so a dangling
-  symlink is missing).
+- "Missing" is an `os.Stat` failure with `ENOENT` or `ENOTDIR` only (symlinks
+  followed, so a dangling symlink is missing). Any other error — a permission-denied
+  directory, a symlink loop — counts as live: the audit cannot prove absence.
 - **Suffix liveness.** A relative backtick ref missing under every base is still live when some
   existing repo path ends in `/<ref>` — instruction files routinely name files relative
   to a subproject (`daemon/conn.go` for `picker/remotebridge/daemon/conn.go`). The
@@ -231,7 +249,10 @@ An ambiguous token that resolves to a live path is dropped like any other.
   the likely new location of a moved file. The repo is walked once, lazily, the first
   time one of its refs is missing under every base (the walk also backs suffix
   liveness); `.git`, `node_modules`, `vendor`, `.worktrees`, `.direnv`,
-  `result`, `target`, and `dist` are not descended.
+  `result`, `target`, and `dist` are not descended. The walk is capped at 200,000
+  entries. An index that hit the cap, or whose walk met an unreadable subtree, is
+  incomplete: suffix liveness then treats every relative backtick ref in that repo
+  as live (absence is unprovable), and a capped index yields an empty `same_name`.
 
 Canonicalization caveat: artifacts under a centralized worktree dir
 (`<root>/.worktrees/<owner>/<repo>/<branch>/`) canonicalize to a path that does not
