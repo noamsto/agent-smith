@@ -10,7 +10,7 @@ import (
 
 func writeJSON(t *testing.T, path, content string) {
 	t.Helper()
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil { //nolint:gosec // test fixture
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil { // test fixture
 		t.Fatal(err)
 	}
 }
@@ -51,7 +51,7 @@ func TestWriteProposalsAndReasonLogs(t *testing.T) {
 	if err := WriteProposals(props, propsPath); err != nil {
 		t.Fatal(err)
 	}
-	data, _ := os.ReadFile(propsPath) //nolint:gosec // path is under the test temp dir
+	data, _ := os.ReadFile(propsPath) // path is under the test temp dir
 	var round []Proposal
 	if err := json.Unmarshal(data, &round); err != nil || len(round) != 1 {
 		t.Fatalf("proposals.json round-trip failed: %v rows=%d", err, len(round))
@@ -62,7 +62,7 @@ func TestWriteProposalsAndReasonLogs(t *testing.T) {
 	if err != nil || n != 1 {
 		t.Fatalf("WriteReasonLogs: n=%d err=%v", n, err)
 	}
-	entry, _ := os.ReadFile(filepath.Join(rlDir, "2026-06-01-glitch-skeleton.md")) //nolint:gosec // path is under the test temp dir
+	entry, _ := os.ReadFile(filepath.Join(rlDir, "2026-06-01-glitch-skeleton.md")) // path is under the test temp dir
 	if !strings.Contains(string(entry), "make imperative") ||
 		!strings.Contains(string(entry), "## Diagnosis") {
 		t.Errorf("reason-log missing content:\n%s", entry)
@@ -81,7 +81,7 @@ func TestWriteProposalsAndReasonLogs(t *testing.T) {
 	if n2 != 0 {
 		t.Errorf("expected append-only (0 new), got %d", n2)
 	}
-	again, _ := os.ReadFile(filepath.Join(rlDir, "2026-06-01-glitch-skeleton.md")) //nolint:gosec // path is under the test temp dir
+	again, _ := os.ReadFile(filepath.Join(rlDir, "2026-06-01-glitch-skeleton.md")) // path is under the test temp dir
 	if strings.Contains(string(again), "SHOULD NOT APPEAR") {
 		t.Errorf("append-only violated: existing reason-log was overwritten")
 	}

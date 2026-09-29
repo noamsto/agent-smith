@@ -32,17 +32,17 @@ func isolateGit(t *testing.T) string {
 
 func gitInit(t *testing.T, dir string) {
 	t.Helper()
-	if out, err := exec.Command("git", "init", "-q", dir).CombinedOutput(); err != nil { //nolint:gosec // test helper running a fixed binary
+	if out, err := exec.Command("git", "init", "-q", dir).CombinedOutput(); err != nil { // test helper running a fixed binary
 		t.Fatalf("git init %s: %v\n%s", dir, err, out)
 	}
 }
 
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil { //nolint:gosec // test fixture
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil { // test fixture
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil { //nolint:gosec // test fixture
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil { // test fixture
 		t.Fatal(err)
 	}
 }
@@ -263,7 +263,7 @@ func lockDir(t *testing.T, dir string) {
 	if err := os.Chmod(dir, 0); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) }) //nolint:gosec // restoring a test directory's mode
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) }) // restoring a test directory's mode
 }
 
 func TestExistsFailsTowardLive(t *testing.T) {

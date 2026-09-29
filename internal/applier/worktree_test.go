@@ -107,7 +107,7 @@ func TestOpenRefusesBranchWithCommits(t *testing.T) {
 	if _, err := git(root, "worktree", "add", tmp, "-b", tg.BranchName, "main"); err != nil {
 		t.Fatalf("seed branch worktree: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(tmp, "WORK.txt"), []byte("real work\n"), 0o644); err != nil { //nolint:gosec // test fixture
+	if err := os.WriteFile(filepath.Join(tmp, "WORK.txt"), []byte("real work\n"), 0o644); err != nil { // test fixture
 		t.Fatal(err)
 	}
 	for _, args := range [][]string{{"add", "-A"}, {"-c", "user.email=t@t", "-c", "user.name=t", "commit", "-m", "work"}} {
@@ -140,7 +140,7 @@ func TestOpenBasesOffOriginNotLocalTip(t *testing.T) {
 	// Simulate a fetched origin/main at the seed commit.
 	gitRun("update-ref", "refs/remotes/origin/main", seed)
 	// Add an unpushed local-only commit on main.
-	if err := os.WriteFile(filepath.Join(root, "LOCAL-ONLY.txt"), []byte("unpushed\n"), 0o644); err != nil { //nolint:gosec // test fixture
+	if err := os.WriteFile(filepath.Join(root, "LOCAL-ONLY.txt"), []byte("unpushed\n"), 0o644); err != nil { // test fixture
 		t.Fatal(err)
 	}
 	gitRun("add", "-A")
