@@ -18,7 +18,7 @@ type runner func(dir, name string, args ...string) ([]byte, error)
 
 // execRunner is the production runner.
 func execRunner(dir, name string, args ...string) ([]byte, error) {
-	c := exec.Command(name, args...)
+	c := exec.Command(name, args...) //nolint:gosec // fixed binary; args are passed as argv, not through a shell
 	c.Dir = dir
 	// A fresh worktree may lack .pre-commit-config.yaml while the repo's
 	// commit hook still invokes pre-commit; without this the hook hard-fails

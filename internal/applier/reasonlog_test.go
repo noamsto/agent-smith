@@ -35,14 +35,14 @@ fewer whole-file reads
 func TestAppendPRLink(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "2026-06-01-glitch-skeleton.md")
-	if err := os.WriteFile(path, []byte(sampleEntry), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(sampleEntry), 0o644); err != nil { //nolint:gosec // test fixture
 		t.Fatal(err)
 	}
 
 	if err := AppendPRLink(dir, "glitch-skeleton", "https://github.com/x/y/pull/7"); err != nil {
 		t.Fatal(err)
 	}
-	got, err := os.ReadFile(path)
+	got, err := os.ReadFile(path) //nolint:gosec // path is under the test temp dir
 	if err != nil {
 		t.Fatalf("read back: %v", err)
 	}
@@ -60,7 +60,7 @@ func TestAppendPRLink(t *testing.T) {
 	if err := AppendPRLink(dir, "glitch-skeleton", "https://github.com/x/y/pull/7"); err != nil {
 		t.Fatal(err)
 	}
-	got2, err := os.ReadFile(path)
+	got2, err := os.ReadFile(path) //nolint:gosec // path is under the test temp dir
 	if err != nil {
 		t.Fatalf("read back: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestAppendPRLink(t *testing.T) {
 	// Heading present but placeholder already consumed/removed → error, not silent success.
 	noPlaceholder := "# orphan\n\nsome body, no placeholder\n"
 	p2 := filepath.Join(dir, "2026-06-01-orphan.md")
-	if err := os.WriteFile(p2, []byte(noPlaceholder), 0o644); err != nil {
+	if err := os.WriteFile(p2, []byte(noPlaceholder), 0o644); err != nil { //nolint:gosec // test fixture
 		t.Fatal(err)
 	}
 	if err := AppendPRLink(dir, "orphan", "https://github.com/x/y/pull/8"); err == nil {
@@ -91,14 +91,14 @@ func TestAppendPRLinkAddsMissingOutcomeMarker(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "2026-06-01-glitch-legacy.md")
 	legacy := "# glitch-legacy\n\n**Artifact:** /g/CLAUDE.md\n\n## Diagnosis\n\nd\n\n" + prPlaceholder + "\n"
-	if err := os.WriteFile(path, []byte(legacy), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(legacy), 0o644); err != nil { //nolint:gosec // test fixture
 		t.Fatal(err)
 	}
 
 	if err := AppendPRLink(dir, "glitch-legacy", "https://github.com/x/y/pull/9"); err != nil {
 		t.Fatal(err)
 	}
-	got, err := os.ReadFile(path)
+	got, err := os.ReadFile(path) //nolint:gosec // path is under the test temp dir
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +117,7 @@ func TestAppendPRLinkAddsMissingOutcomeMarker(t *testing.T) {
 	if n != 1 {
 		t.Fatalf("reconciled %d entries, want 1", n)
 	}
-	got, err = os.ReadFile(path)
+	got, err = os.ReadFile(path) //nolint:gosec // path is under the test temp dir
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +133,7 @@ func TestReconcileStampsLegacyMarker(t *testing.T) {
 	path := filepath.Join(dir, "2026-06-01-glitch-prose.md")
 	entry := "# glitch-prose\n\n**PR:** https://github.com/x/y/pull/3\n\n" +
 		"<!-- outcome appended by deja-vu -->\n"
-	if err := os.WriteFile(path, []byte(entry), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(entry), 0o644); err != nil { //nolint:gosec // test fixture
 		t.Fatal(err)
 	}
 
@@ -144,7 +144,7 @@ func TestReconcileStampsLegacyMarker(t *testing.T) {
 	if n != 1 {
 		t.Fatalf("reconciled %d entries, want 1", n)
 	}
-	got, err := os.ReadFile(path)
+	got, err := os.ReadFile(path) //nolint:gosec // path is under the test temp dir
 	if err != nil {
 		t.Fatal(err)
 	}

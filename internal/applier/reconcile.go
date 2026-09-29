@@ -59,7 +59,7 @@ func Reconcile(dir string, statuses []PRStatus) (int, error) {
 	}
 	updated := 0
 	for _, path := range paths {
-		data, err := os.ReadFile(path)
+		data, err := os.ReadFile(path) //nolint:gosec // operator-supplied path
 		if err != nil {
 			return updated, fmt.Errorf("read %s: %w", path, err)
 		}
@@ -76,7 +76,7 @@ func Reconcile(dir string, statuses []PRStatus) (int, error) {
 		if !changed || next == content {
 			continue
 		}
-		if err := os.WriteFile(path, []byte(next), 0o644); err != nil {
+		if err := os.WriteFile(path, []byte(next), 0o644); err != nil { //nolint:gosec // artifact is meant to be world-readable; holds no secrets
 			return updated, fmt.Errorf("write %s: %w", path, err)
 		}
 		updated++
@@ -93,7 +93,7 @@ func EntryPRURLs(dir string) ([]string, error) {
 	seen := map[string]bool{}
 	var urls []string
 	for _, path := range paths {
-		data, err := os.ReadFile(path)
+		data, err := os.ReadFile(path) //nolint:gosec // operator-supplied path
 		if err != nil {
 			return nil, fmt.Errorf("read %s: %w", path, err)
 		}

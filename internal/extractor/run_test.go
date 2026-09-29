@@ -41,7 +41,7 @@ func testConfig(t *testing.T, fixtureDir string, signals ...string) Config {
 // query runs a SQL query against db with -json and decodes the result rows.
 func query(t *testing.T, db, sql string) []map[string]any {
 	t.Helper()
-	out, err := exec.Command(duckDBBin(), "-json", db, "-c", sql).Output()
+	out, err := exec.Command(duckDBBin(), "-json", db, "-c", sql).Output() //nolint:gosec // test helper running duckdb
 	if err != nil {
 		t.Fatalf("query %q: %v", sql, err)
 	}

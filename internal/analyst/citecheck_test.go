@@ -360,7 +360,7 @@ func TestApplyCiteCheckRejects(t *testing.T) {
 	if err != nil || len(entries) != 1 {
 		t.Fatalf("reason-log dir = %v, err = %v", entries, err)
 	}
-	body, err := os.ReadFile(filepath.Join(rlDir, entries[0].Name()))
+	body, err := os.ReadFile(filepath.Join(rlDir, entries[0].Name())) //nolint:gosec // path is under the test temp dir
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -403,7 +403,7 @@ func TestApplyCiteCheckDemotes(t *testing.T) {
 	if result.Status != "demoted" {
 		t.Fatalf("status = %q, notes = %q", result.Status, result.Notes)
 	}
-	data, err := os.ReadFile(proposalPath)
+	data, err := os.ReadFile(proposalPath) //nolint:gosec // path is under the test temp dir
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -412,9 +412,11 @@ func TestApplyCiteCheckDemotes(t *testing.T) {
 		t.Fatal(err)
 	}
 	var confidence, reasonLog, extra string
-	json.Unmarshal(m["confidence"], &confidence)
-	json.Unmarshal(m["reason_log"], &reasonLog)
-	json.Unmarshal(m["extra"], &extra)
+	for k, dst := range map[string]*string{"confidence": &confidence, "reason_log": &reasonLog, "extra": &extra} {
+		if err := json.Unmarshal(m[k], dst); err != nil {
+			t.Fatalf("unmarshal %s: %v", k, err)
+		}
+	}
 	if confidence != "medium" {
 		t.Errorf("confidence = %q", confidence)
 	}
@@ -466,11 +468,18 @@ func TestApplyCiteCheckStaleRefSkipsByteIdentical(t *testing.T) {
 	if result.Status != "ok" {
 		t.Fatalf("status = %q", result.Status)
 	}
-	after, err := os.ReadFile(proposalPath)
+	after, err := os.ReadFile(proposalPath) //nolint:gosec // path is under the test temp dir
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(after) != content {
 		t.Errorf("proposal file was modified:\nbefore: %s\nafter:  %s", content, after)
+	}
+}
+
+func TestRewriteDemotedRejectsNullProposal(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "p.json")
+	if err := rewriteDemoted(path, []byte("null"), "n"); err == nil {
+		t.Fatal("expected an error for a JSON null proposal")
 	}
 }

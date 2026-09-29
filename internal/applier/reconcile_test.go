@@ -20,14 +20,14 @@ func TestReconcileUpdatesMatchingEntry(t *testing.T) {
 	merged := filepath.Join(dir, "a.md")
 	closed := filepath.Join(dir, "b.md")
 	untouched := filepath.Join(dir, "c.md")
-	if err := os.WriteFile(merged, []byte(entryWithPR("a", "https://github.com/x/y/pull/1")), 0o644); err != nil {
+	if err := os.WriteFile(merged, []byte(entryWithPR("a", "https://github.com/x/y/pull/1")), 0o644); err != nil { //nolint:gosec // test fixture
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(closed, []byte(entryWithPR("b", "https://github.com/x/y/pull/2")), 0o644); err != nil {
+	if err := os.WriteFile(closed, []byte(entryWithPR("b", "https://github.com/x/y/pull/2")), 0o644); err != nil { //nolint:gosec // test fixture
 		t.Fatal(err)
 	}
 	// No matching status → stays open.
-	if err := os.WriteFile(untouched, []byte(entryWithPR("c", "https://github.com/x/y/pull/3")), 0o644); err != nil {
+	if err := os.WriteFile(untouched, []byte(entryWithPR("c", "https://github.com/x/y/pull/3")), 0o644); err != nil { //nolint:gosec // test fixture
 		t.Fatal(err)
 	}
 
@@ -55,7 +55,7 @@ func TestReconcileUpdatesMatchingEntry(t *testing.T) {
 
 func assertOutcome(t *testing.T, path, want string) {
 	t.Helper()
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // path is under the test temp dir
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,21 +66,21 @@ func assertOutcome(t *testing.T, path, want string) {
 
 func TestEntryPRURLsDistinct(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "a.md"), []byte(entryWithPR("a", "https://github.com/noamsto/lazytmux/pull/1")), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "a.md"), []byte(entryWithPR("a", "https://github.com/noamsto/lazytmux/pull/1")), 0o644); err != nil { //nolint:gosec // test fixture
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "b.md"), []byte(entryWithPR("b", "https://github.com/noamsto/lazytmux/pull/2")), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "b.md"), []byte(entryWithPR("b", "https://github.com/noamsto/lazytmux/pull/2")), 0o644); err != nil { //nolint:gosec // test fixture
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "c.md"), []byte(entryWithPR("c", "https://github.com/noamsto/agent-smith/pull/9")), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "c.md"), []byte(entryWithPR("c", "https://github.com/noamsto/agent-smith/pull/9")), 0o644); err != nil { //nolint:gosec // test fixture
 		t.Fatal(err)
 	}
 	// An entry with no PR yet must not contribute a URL.
-	if err := os.WriteFile(filepath.Join(dir, "d.md"), []byte("# d\n\n<!-- outcome: open -->\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "d.md"), []byte("# d\n\n<!-- outcome: open -->\n"), 0o644); err != nil { //nolint:gosec // test fixture
 		t.Fatal(err)
 	}
 	// A duplicate URL must collapse.
-	if err := os.WriteFile(filepath.Join(dir, "e.md"), []byte(entryWithPR("e", "https://github.com/noamsto/lazytmux/pull/1")), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "e.md"), []byte(entryWithPR("e", "https://github.com/noamsto/lazytmux/pull/1")), 0o644); err != nil { //nolint:gosec // test fixture
 		t.Fatal(err)
 	}
 

@@ -213,7 +213,7 @@ func ClusterDB(ctx context.Context, db string, minSessions, maxIncidents, staleD
 		var redirectFrom, unresolvedImport string
 		if imp, ok := redirectImport(content); ok {
 			target := resolveImport(r.Artifact, imp)
-			if tdata, terr := os.ReadFile(target); terr == nil {
+			if tdata, terr := os.ReadFile(target); terr == nil { //nolint:gosec // operator-supplied path
 				redirectFrom, artifact, content = r.Artifact, target, string(tdata)
 			} else {
 				unresolvedImport = imp
@@ -410,7 +410,7 @@ func indexEntry(c Cluster, rel string) ClusterIndexEntry {
 func WriteClusters(clusters []Cluster, indexPath string) error {
 	dir := filepath.Dir(indexPath)
 	clustersDir := filepath.Join(dir, "clusters")
-	if err := os.MkdirAll(clustersDir, 0o755); err != nil {
+	if err := os.MkdirAll(clustersDir, 0o755); err != nil { //nolint:gosec // artifact is meant to be world-readable; holds no secrets
 		return err
 	}
 
@@ -424,7 +424,7 @@ func WriteClusters(clusters []Cluster, indexPath string) error {
 		if err != nil {
 			return err
 		}
-		if err := os.WriteFile(file, append(data, '\n'), 0o644); err != nil {
+		if err := os.WriteFile(file, append(data, '\n'), 0o644); err != nil { //nolint:gosec // artifact is meant to be world-readable; holds no secrets
 			return err
 		}
 		written[name] = true
@@ -444,7 +444,7 @@ func WriteClusters(clusters []Cluster, indexPath string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(indexPath, append(idx, '\n'), 0o644)
+	return os.WriteFile(indexPath, append(idx, '\n'), 0o644) //nolint:gosec // artifact is meant to be world-readable; holds no secrets
 }
 
 // MergeClusters replaces one signal type's clusters in an existing index without
@@ -456,7 +456,7 @@ func MergeClusters(clusters []Cluster, indexPath, signalType string) error {
 	clustersDir := filepath.Join(dir, "clusters")
 
 	var index []ClusterIndexEntry
-	switch data, err := os.ReadFile(indexPath); {
+	switch data, err := os.ReadFile(indexPath); { //nolint:gosec // operator-supplied path
 	case errors.Is(err, os.ErrNotExist):
 		// no index yet
 	case err != nil:
@@ -482,7 +482,7 @@ func MergeClusters(clusters []Cluster, indexPath, signalType string) error {
 	}
 	index = kept
 
-	if err := os.MkdirAll(clustersDir, 0o755); err != nil {
+	if err := os.MkdirAll(clustersDir, 0o755); err != nil { //nolint:gosec // artifact dir is meant to be world-readable; holds no secrets
 		return err
 	}
 	for _, c := range clusters {
@@ -492,7 +492,7 @@ func MergeClusters(clusters []Cluster, indexPath, signalType string) error {
 		if err != nil {
 			return err
 		}
-		if err := os.WriteFile(file, append(data, '\n'), 0o644); err != nil {
+		if err := os.WriteFile(file, append(data, '\n'), 0o644); err != nil { //nolint:gosec // artifact is meant to be world-readable; holds no secrets
 			return err
 		}
 
@@ -507,7 +507,7 @@ func MergeClusters(clusters []Cluster, indexPath, signalType string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(indexPath, append(idx, '\n'), 0o644)
+	return os.WriteFile(indexPath, append(idx, '\n'), 0o644) //nolint:gosec // artifact is meant to be world-readable; holds no secrets
 }
 
 // pruneStaleClusters deletes per-cluster files this run did not write. A cluster

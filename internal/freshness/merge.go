@@ -34,7 +34,7 @@ func LoadAdjudications(dir string) (stale map[string]bool, errs []error) {
 			continue
 		}
 		p := filepath.Join(dir, f.Name())
-		data, err := os.ReadFile(p)
+		data, err := os.ReadFile(p) //nolint:gosec // operator-supplied path
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", p, err))
 			continue
@@ -132,7 +132,7 @@ func Clusters(r Report, stale map[string]bool, entries []analyst.Entry) (cluster
 
 	for _, a := range order {
 		refs := byArtifact[a]
-		content, err := os.ReadFile(a)
+		content, err := os.ReadFile(a) //nolint:gosec // operator-supplied path
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", a, err))
 			continue

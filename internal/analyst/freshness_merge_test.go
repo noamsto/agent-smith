@@ -59,7 +59,7 @@ func TestMergeClustersReplacesSignalType(t *testing.T) {
 		t.Fatalf("WriteClusters: %v", err)
 	}
 	trackAFile := filepath.Join(dir, "clusters", clusterFileName(trackA.ClusterID))
-	trackABytes, err := os.ReadFile(trackAFile)
+	trackABytes, err := os.ReadFile(trackAFile) //nolint:gosec // path is under the test temp dir
 	if err != nil {
 		t.Fatalf("read track A file: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestMergeClustersReplacesSignalType(t *testing.T) {
 	}
 
 	// Track A's entry and file are untouched by the merge.
-	gotTrackABytes, err := os.ReadFile(trackAFile)
+	gotTrackABytes, err := os.ReadFile(trackAFile) //nolint:gosec // path is under the test temp dir
 	if err != nil {
 		t.Fatalf("track A file gone after merge: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestMergeClustersReplacesSignalType(t *testing.T) {
 		t.Errorf("old stale-ref file should be removed, stat err = %v", err)
 	}
 	newStaleFile := filepath.Join(dir, "clusters", clusterFileName(newStale.ClusterID))
-	newStaleData, err := os.ReadFile(newStaleFile)
+	newStaleData, err := os.ReadFile(newStaleFile) //nolint:gosec // path is under the test temp dir
 	if err != nil {
 		t.Fatalf("new stale-ref file missing: %v", err)
 	}
@@ -115,7 +115,7 @@ func TestMergeClustersReplacesSignalType(t *testing.T) {
 	}
 
 	// Index holds the kept Track A entry first, then the new stale-ref entry.
-	idxData, err := os.ReadFile(indexPath)
+	idxData, err := os.ReadFile(indexPath) //nolint:gosec // path is under the test temp dir
 	if err != nil {
 		t.Fatalf("read index: %v", err)
 	}
@@ -135,7 +135,7 @@ func TestMergeClustersReplacesSignalType(t *testing.T) {
 	if _, err := os.Stat(newStaleFile); !os.IsNotExist(err) {
 		t.Errorf("stale-ref file should be pruned by WriteClusters, stat err = %v", err)
 	}
-	idxData, err = os.ReadFile(indexPath)
+	idxData, err = os.ReadFile(indexPath) //nolint:gosec // path is under the test temp dir
 	if err != nil {
 		t.Fatalf("read index after prune: %v", err)
 	}
@@ -156,7 +156,7 @@ func TestMergeClustersCreatesMissingIndex(t *testing.T) {
 	if err := MergeClusters([]Cluster{c}, indexPath, "stale-ref"); err != nil {
 		t.Fatalf("MergeClusters: %v", err)
 	}
-	data, err := os.ReadFile(indexPath)
+	data, err := os.ReadFile(indexPath) //nolint:gosec // path is under the test temp dir
 	if err != nil {
 		t.Fatalf("index not created: %v", err)
 	}

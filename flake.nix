@@ -31,8 +31,24 @@
           '';
         };
 
+        # Static-analysis gate: golangci-lint (.golangci.yml), nilaway over the
+        # module's own non-test packages (test code trips nilaway on slicing a
+        # result the test has already length-checked), and the race detector
+        # over the whole suite.
+        checks.gate = pkgs.runCommand "agent-smith-gate" {
+          src = ./.;
+          nativeBuildInputs = [ pkgs.go pkgs.gcc pkgs.golangci-lint pkgs.nilaway pkgs.duckdb pkgs.git ];
+        } ''
+          cp -r $src src && chmod -R u+w src && cd src
+          export HOME=$TMPDIR GOCACHE=$TMPDIR/go-cache GOFLAGS=-mod=readonly CGO_ENABLED=1
+          golangci-lint run ./...
+          nilaway -test=false -include-pkgs=github.com/noamsto/agent-smith ./...
+          go test -race ./...
+          touch $out
+        '';
+
         devShells.default = pkgs.mkShell {
-          packages = [ pkgs.go pkgs.gopls pkgs.go-tools pkgs.duckdb pkgs.jq pkgs.git pkgs.gh pkgs.goreleaser ];
+          packages = [ pkgs.go pkgs.gopls pkgs.go-tools pkgs.golangci-lint pkgs.nilaway pkgs.duckdb pkgs.jq pkgs.git pkgs.gh pkgs.goreleaser ];
         };
       })
     // {

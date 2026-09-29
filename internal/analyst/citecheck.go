@@ -346,7 +346,7 @@ func checkCitations(prop citeProposal, cluster Cluster) Result {
 // proposal in place, a reject writes a reason-log entry and renames the
 // proposal so LoadProposals never assembles it.
 func ApplyCiteCheck(proposalPath, clusterPath, reasonLogDir, date string) (Result, error) {
-	clusterData, err := os.ReadFile(clusterPath)
+	clusterData, err := os.ReadFile(clusterPath) //nolint:gosec // operator-supplied path
 	if err != nil {
 		return Result{}, fmt.Errorf("read cluster %s: %w", clusterPath, err)
 	}
@@ -356,7 +356,7 @@ func ApplyCiteCheck(proposalPath, clusterPath, reasonLogDir, date string) (Resul
 	}
 	if cluster.SignalType == "stale-ref" {
 		id := ""
-		if data, err := os.ReadFile(proposalPath); err == nil {
+		if data, err := os.ReadFile(proposalPath); err == nil { //nolint:gosec // operator-supplied path
 			var p struct {
 				ID string `json:"id"`
 			}
@@ -367,7 +367,7 @@ func ApplyCiteCheck(proposalPath, clusterPath, reasonLogDir, date string) (Resul
 		return Result{ID: id, Status: "ok"}, nil
 	}
 
-	propData, err := os.ReadFile(proposalPath)
+	propData, err := os.ReadFile(proposalPath) //nolint:gosec // operator-supplied path
 	if err != nil {
 		return Result{}, fmt.Errorf("read proposal %s: %w", proposalPath, err)
 	}
@@ -402,6 +402,9 @@ func rewriteDemoted(path string, original []byte, notes string) error {
 	if err := json.Unmarshal(original, &m); err != nil {
 		return err
 	}
+	if m == nil {
+		return fmt.Errorf("proposal %s is JSON null", path)
+	}
 	var reasonLog string
 	if err := json.Unmarshal(m["reason_log"], &reasonLog); err != nil {
 		return err
@@ -421,7 +424,7 @@ func rewriteDemoted(path string, original []byte, notes string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, append(out, '\n'), 0o644)
+	return os.WriteFile(path, append(out, '\n'), 0o644) //nolint:gosec // artifact is meant to be world-readable; holds no secrets
 }
 
 // writeCitationRejection writes the reason-log entry for a citation-check
@@ -429,7 +432,7 @@ func rewriteDemoted(path string, original []byte, notes string) error {
 // entry: LinkReasonLog never matches the heading, and neither FilterRejected
 // nor Escalate treats an uncited outcome as a settled finding.
 func writeCitationRejection(prop citeProposal, result Result, dir, date string) error {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil { //nolint:gosec // artifact is meant to be world-readable; holds no secrets
 		return err
 	}
 	slug := slugify(prop.ID)
@@ -452,14 +455,16 @@ func writeCitationRejection(prop citeProposal, result Result, dir, date string) 
 	fmt.Fprintf(&b, "\n%s\n", outcomeMarker(OutcomeUncited))
 
 	// O_EXCL: a second reject run on the same date keeps the existing entry.
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644) //nolint:gosec // artifact is meant to be world-readable; holds no secrets
 	if err != nil {
 		if os.IsExist(err) {
 			return nil
 		}
 		return err
 	}
-	defer f.Close()
-	_, err = f.WriteString(b.String())
-	return err
+	if _, err := f.WriteString(b.String()); err != nil {
+		_ = f.Close()
+		return err
+	}
+	return f.Close()
 }

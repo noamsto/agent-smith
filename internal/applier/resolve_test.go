@@ -46,7 +46,7 @@ func initRepo(t *testing.T, originURL string) string {
 	t.Helper()
 	root := t.TempDir()
 	run := func(args ...string) {
-		c := exec.Command("git", args...)
+		c := exec.Command("git", args...) //nolint:gosec // test helper running git
 		c.Dir = root
 		if out, err := c.CombinedOutput(); err != nil {
 			t.Fatalf("git %v: %v: %s", args, err, out)
@@ -56,7 +56,7 @@ func initRepo(t *testing.T, originURL string) string {
 	run("config", "user.email", "t@t")
 	run("config", "user.name", "t")
 	run("remote", "add", "origin", originURL)
-	if err := os.WriteFile(filepath.Join(root, "CLAUDE.md"), []byte("# rules\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "CLAUDE.md"), []byte("# rules\n"), 0o644); err != nil { //nolint:gosec // test fixture
 		t.Fatal(err)
 	}
 	run("add", "-A")

@@ -57,7 +57,7 @@ func slug(s string) string {
 }
 
 func git(dir string, args ...string) ([]byte, error) {
-	c := exec.Command("git", args...)
+	c := exec.Command("git", args...) //nolint:gosec // fixed binary; args are passed as argv, not through a shell
 	c.Dir = dir
 	return c.CombinedOutput()
 }
@@ -91,7 +91,7 @@ func repoRoot(path string) (string, error) {
 // the deepest existing ancestor directory and rejoins the missing remainder, so a
 // symlinked parent is still followed. A broken symlink returns an error.
 func resolveRealPath(p string) (string, error) {
-	if _, err := os.Lstat(p); err == nil {
+	if _, err := os.Lstat(p); err == nil { //nolint:gosec // resolving an operator-supplied artifact path; nothing is served from it
 		real, err := filepath.EvalSymlinks(p)
 		if err != nil {
 			return "", fmt.Errorf("resolveRealPath %s: %w", p, err)
@@ -103,7 +103,7 @@ func resolveRealPath(p string) (string, error) {
 	dir := filepath.Dir(p)
 	rest := filepath.Base(p)
 	for {
-		if _, err := os.Stat(dir); err == nil {
+		if _, err := os.Stat(dir); err == nil { //nolint:gosec // resolving an operator-supplied artifact path; nothing is served from it
 			break
 		}
 		parent := filepath.Dir(dir)

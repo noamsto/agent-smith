@@ -25,5 +25,5 @@ func ReadMarker(outDB string) string {
 
 // WriteMarker records ts as the last-run marker for outDB.
 func WriteMarker(outDB string, ts time.Time) error {
-	return os.WriteFile(MarkerPath(outDB), []byte(ts.UTC().Format(time.RFC3339)+"\n"), 0o644)
+	return os.WriteFile(MarkerPath(outDB), []byte(ts.UTC().Format(time.RFC3339)+"\n"), 0o644) //nolint:gosec // artifact is meant to be world-readable; holds no secrets
 }

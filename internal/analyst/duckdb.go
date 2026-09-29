@@ -20,7 +20,7 @@ func duckDBBin() string {
 
 // runDuckDB pipes a SQL script to `duckdb <db>` over stdin and returns stdout.
 func runDuckDB(ctx context.Context, db, script string) (string, error) {
-	cmd := exec.CommandContext(ctx, duckDBBin(), db)
+	cmd := exec.CommandContext(ctx, duckDBBin(), db) //nolint:gosec // fixed binary; args are passed as argv, not through a shell
 	cmd.Stdin = strings.NewReader(script)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -34,7 +34,7 @@ func runDuckDB(ctx context.Context, db, script string) (string, error) {
 // queryJSON runs a query against db in -json mode and returns the raw JSON bytes
 // (a JSON array of row objects, or empty for no rows).
 func queryJSON(ctx context.Context, db, sql string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, duckDBBin(), "-json", db, "-c", sql)
+	cmd := exec.CommandContext(ctx, duckDBBin(), "-json", db, "-c", sql) //nolint:gosec // fixed binary; args are passed as argv, not through a shell
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()

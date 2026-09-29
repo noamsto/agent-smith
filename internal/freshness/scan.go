@@ -92,7 +92,7 @@ func (s *scanner) scan(paths []string, opts Options) Report {
 		}
 		visited[real] = true
 
-		content, err := os.ReadFile(p)
+		content, err := os.ReadFile(p) //nolint:gosec // operator-supplied path
 		if err != nil {
 			r.Skipped = append(r.Skipped, Skipped{Artifact: p, Reason: "unreadable: " + err.Error()})
 			continue
@@ -312,12 +312,12 @@ func WriteReport(r Report, path string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, append(b, '\n'), 0o644)
+	return os.WriteFile(path, append(b, '\n'), 0o644) //nolint:gosec // artifact is meant to be world-readable; holds no secrets
 }
 
 func ReadReport(path string) (Report, error) {
 	var r Report
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(path) //nolint:gosec // operator-supplied path
 	if err != nil {
 		return r, err
 	}

@@ -36,7 +36,7 @@ func writeReasonLogEntry(t *testing.T, dir, id, artifact, signal, outcome string
 	}
 	var path string
 	for _, p := range paths {
-		data, err := os.ReadFile(p)
+		data, err := os.ReadFile(p) //nolint:gosec // path is under the test temp dir
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -48,7 +48,7 @@ func writeReasonLogEntry(t *testing.T, dir, id, artifact, signal, outcome string
 	if path == "" {
 		t.Fatalf("no reason-log file written for %q in %s", id, dir)
 	}
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // path is under the test temp dir
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func writeReasonLogEntry(t *testing.T, dir, id, artifact, signal, outcome string
 	if !ok {
 		t.Fatalf("%s: no outcome marker to set", path)
 	}
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil { //nolint:gosec // test fixture
 		t.Fatal(err)
 	}
 }
@@ -334,7 +334,7 @@ func TestClustersSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	indexData, err := os.ReadFile(indexPath)
+	indexData, err := os.ReadFile(indexPath) //nolint:gosec // path is under the test temp dir
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -412,7 +412,7 @@ func TestStaleRefClusterPassesCiteCheckUnchanged(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	indexData, err := os.ReadFile(indexPath)
+	indexData, err := os.ReadFile(indexPath) //nolint:gosec // path is under the test temp dir
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -441,7 +441,7 @@ func TestStaleRefClusterPassesCiteCheckUnchanged(t *testing.T) {
 	if result.Status != "ok" {
 		t.Fatalf("status = %q, want ok", result.Status)
 	}
-	after, err := os.ReadFile(proposalPath)
+	after, err := os.ReadFile(proposalPath) //nolint:gosec // path is under the test temp dir
 	if err != nil {
 		t.Fatal(err)
 	}

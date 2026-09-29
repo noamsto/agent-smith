@@ -1,7 +1,7 @@
 package applier
 
 import (
-	"crypto/sha1"
+	"crypto/sha1" //nolint:gosec // sha1 only derives a short stable id from a path; not security-sensitive
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -77,7 +77,7 @@ type DedupConfig struct {
 // in the same repo share a GroupID and a group branch, so the apply loop lands them in
 // one worktree/PR. The plan is sorted by ProposalID.
 func Prepare(proposalsPath, settingsRepo string, cfg DedupConfig, includeLowConfidence bool) ([]PlanEntry, error) {
-	data, err := os.ReadFile(proposalsPath)
+	data, err := os.ReadFile(proposalsPath) //nolint:gosec // operator-supplied path
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", proposalsPath, err)
 	}
@@ -145,7 +145,7 @@ func Prepare(proposalsPath, settingsRepo string, cfg DedupConfig, includeLowConf
 			continue
 		}
 		prefix := "docs"
-		if groups[e.RepoRoot+"\x00"+e.FilePath].escalate {
+		if g := groups[e.RepoRoot+"\x00"+e.FilePath]; g != nil && g.escalate {
 			prefix = "chore"
 		}
 		e.BranchName = prefix + "/agent-smith-" + e.GroupID
@@ -213,7 +213,7 @@ func artifactSlug(repoRoot, file string) string {
 	if err != nil {
 		rel = filepath.Base(file)
 	}
-	sum := sha1.Sum([]byte(repoRoot))
+	sum := sha1.Sum([]byte(repoRoot)) //nolint:gosec // sha1 only derives a short stable id from a path; not security-sensitive
 	return slug(filepath.Base(repoRoot)+"-"+rel) + "-" + hex.EncodeToString(sum[:])[:8]
 }
 
@@ -223,12 +223,12 @@ func WritePlan(plan []PlanEntry, out string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(out, append(data, '\n'), 0o644)
+	return os.WriteFile(out, append(data, '\n'), 0o644) //nolint:gosec // artifact is meant to be world-readable; holds no secrets
 }
 
 // ReadPlan loads a plan written by WritePlan.
 func ReadPlan(path string) ([]PlanEntry, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // operator-supplied path
 	if err != nil {
 		return nil, err
 	}
