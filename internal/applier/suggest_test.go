@@ -53,7 +53,7 @@ func TestWriteSuggestions(t *testing.T) {
 	if err := WriteSuggestions("# x\n", out); err != nil {
 		t.Fatal(err)
 	}
-	data, err := os.ReadFile(out) //nolint:gosec // path is under the test temp dir
+	data, err := os.ReadFile(out) // path is under the test temp dir
 	if err != nil || string(data) != "# x\n" {
 		t.Fatalf("round-trip: %v %q", err, data)
 	}

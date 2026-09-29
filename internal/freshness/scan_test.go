@@ -222,7 +222,7 @@ func TestScanSkipped(t *testing.T) {
 	dir := realTempDir(t)
 	missing := filepath.Join(dir, "missing.md")
 	unreadable := filepath.Join(dir, "adir")
-	if err := os.Mkdir(unreadable, 0o755); err != nil { //nolint:gosec // test fixture
+	if err := os.Mkdir(unreadable, 0o755); err != nil { // test fixture
 		t.Fatal(err)
 	}
 
@@ -283,7 +283,7 @@ func TestReportJSON(t *testing.T) {
 	if err := WriteReport(in, path); err != nil {
 		t.Fatal(err)
 	}
-	raw, err := os.ReadFile(path) //nolint:gosec // path is under the test temp dir
+	raw, err := os.ReadFile(path) // path is under the test temp dir
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -28,7 +28,7 @@ func TestGlobalClaudeMdFlowsToCandidates(t *testing.T) {
 // asserts incidents appear across multiple signal types.
 func TestEndToEndAllSignals(t *testing.T) {
 	corpus := filepath.Join(t.TempDir(), "corpus")
-	if err := os.MkdirAll(corpus, 0o755); err != nil { //nolint:gosec // test fixture
+	if err := os.MkdirAll(corpus, 0o755); err != nil { // test fixture
 		t.Fatal(err)
 	}
 	srcs := []string{
@@ -40,12 +40,12 @@ func TestEndToEndAllSignals(t *testing.T) {
 	for i, dir := range srcs {
 		matches, _ := filepath.Glob(filepath.Join(dir, "*.jsonl"))
 		for j, m := range matches {
-			data, err := os.ReadFile(m) //nolint:gosec // path is under the test temp dir
+			data, err := os.ReadFile(m) // path is under the test temp dir
 			if err != nil {
 				t.Fatalf("read %s: %v", m, err)
 			}
 			dst := filepath.Join(corpus, filepath.Base(dir)+"-"+strconv.Itoa(i)+"-"+strconv.Itoa(j)+".jsonl")
-			if err := os.WriteFile(dst, data, 0o644); err != nil { //nolint:gosec // test fixture
+			if err := os.WriteFile(dst, data, 0o644); err != nil { // test fixture
 				t.Fatalf("write %s: %v", dst, err)
 			}
 		}

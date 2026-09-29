@@ -27,7 +27,7 @@ func TestPrepareStatuses(t *testing.T) {
 	   "evidence":["s1:1"],"diagnosis":"d","proposed_change":"c","confidence":"low","reason_log":"r"}
 	]`
 	pf := filepath.Join(t.TempDir(), "proposals.json")
-	if err := os.WriteFile(pf, []byte(proposals), 0o644); err != nil { //nolint:gosec // test fixture
+	if err := os.WriteFile(pf, []byte(proposals), 0o644); err != nil { // test fixture
 		t.Fatal(err)
 	}
 
@@ -83,7 +83,7 @@ func TestPrepareGroupsByArtifact(t *testing.T) {
 	   "evidence":["s1:1"],"diagnosis":"d","proposed_change":"c","confidence":"high","reason_log":"r"}
 	]`
 	pf := filepath.Join(t.TempDir(), "proposals.json")
-	if err := os.WriteFile(pf, []byte(proposals), 0o644); err != nil { //nolint:gosec // test fixture
+	if err := os.WriteFile(pf, []byte(proposals), 0o644); err != nil { // test fixture
 		t.Fatal(err)
 	}
 	plan, err := Prepare(pf, "", DedupConfig{}, false)
@@ -131,7 +131,7 @@ func TestPrepareEscalationRoutesToSettingsRepo(t *testing.T) {
 	   "evidence":["s1:1"],"diagnosis":"d","proposed_change":"add a hook","confidence":"high","reason_log":"r"}
 	]`
 	pf := filepath.Join(t.TempDir(), "proposals.json")
-	if err := os.WriteFile(pf, []byte(proposals), 0o644); err != nil { //nolint:gosec // test fixture
+	if err := os.WriteFile(pf, []byte(proposals), 0o644); err != nil { // test fixture
 		t.Fatal(err)
 	}
 
@@ -174,7 +174,7 @@ func TestPrepareEscalationNoSettingsRepoUnrouted(t *testing.T) {
 	   "evidence":["s1:1"],"diagnosis":"d","proposed_change":"add a hook","confidence":"high","reason_log":"r"}
 	]`
 	pf := filepath.Join(t.TempDir(), "proposals.json")
-	if err := os.WriteFile(pf, []byte(proposals), 0o644); err != nil { //nolint:gosec // test fixture
+	if err := os.WriteFile(pf, []byte(proposals), 0o644); err != nil { // test fixture
 		t.Fatal(err)
 	}
 
@@ -203,7 +203,7 @@ func TestPrepareEscalationSettingsRepoUnresolvableUnrouted(t *testing.T) {
 	   "evidence":["s1:1"],"diagnosis":"d","proposed_change":"add a hook","confidence":"high","reason_log":"r"}
 	]`
 	pf := filepath.Join(t.TempDir(), "proposals.json")
-	if err := os.WriteFile(pf, []byte(proposals), 0o644); err != nil { //nolint:gosec // test fixture
+	if err := os.WriteFile(pf, []byte(proposals), 0o644); err != nil { // test fixture
 		t.Fatal(err)
 	}
 

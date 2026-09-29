@@ -360,7 +360,7 @@ func TestApplyCiteCheckRejects(t *testing.T) {
 	if err != nil || len(entries) != 1 {
 		t.Fatalf("reason-log dir = %v, err = %v", entries, err)
 	}
-	body, err := os.ReadFile(filepath.Join(rlDir, entries[0].Name())) //nolint:gosec // path is under the test temp dir
+	body, err := os.ReadFile(filepath.Join(rlDir, entries[0].Name())) // path is under the test temp dir
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -403,7 +403,7 @@ func TestApplyCiteCheckDemotes(t *testing.T) {
 	if result.Status != "demoted" {
 		t.Fatalf("status = %q, notes = %q", result.Status, result.Notes)
 	}
-	data, err := os.ReadFile(proposalPath) //nolint:gosec // path is under the test temp dir
+	data, err := os.ReadFile(proposalPath) // path is under the test temp dir
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -468,7 +468,7 @@ func TestApplyCiteCheckStaleRefSkipsByteIdentical(t *testing.T) {
 	if result.Status != "ok" {
 		t.Fatalf("status = %q", result.Status)
 	}
-	after, err := os.ReadFile(proposalPath) //nolint:gosec // path is under the test temp dir
+	after, err := os.ReadFile(proposalPath) // path is under the test temp dir
 	if err != nil {
 		t.Fatal(err)
 	}

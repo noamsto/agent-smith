@@ -138,7 +138,7 @@ func TestDoublePrefixLint(t *testing.T) {
 func TestSubmitCreatesPR(t *testing.T) {
 	dir := t.TempDir()
 	rlPath := filepath.Join(dir, "2026-06-01-glitch-skeleton.md")
-	if err := os.WriteFile(rlPath, []byte(sampleEntry), 0o644); err != nil { //nolint:gosec // test fixture
+	if err := os.WriteFile(rlPath, []byte(sampleEntry), 0o644); err != nil { // test fixture
 		t.Fatal(err)
 	}
 	f := &fakeRunner{status: " M CLAUDE.md", prURL: "https://github.com/x/y/pull/9", diffNames: "CLAUDE.md\n"}
@@ -170,7 +170,7 @@ func TestSubmitCreatesPR(t *testing.T) {
 		t.Errorf("gh args = %q", joined)
 	}
 	// reason-log got the PR link.
-	got, err := os.ReadFile(rlPath) //nolint:gosec // path is under the test temp dir
+	got, err := os.ReadFile(rlPath) // path is under the test temp dir
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,7 +186,7 @@ func TestSubmitGroupedPR(t *testing.T) {
 	dir := t.TempDir()
 	for _, id := range []string{"p-a", "p-b"} {
 		entry := strings.Replace(sampleEntry, "# glitch-skeleton", "# "+id, 1)
-		if err := os.WriteFile(filepath.Join(dir, "2026-06-01-"+id+".md"), []byte(entry), 0o644); err != nil { //nolint:gosec // test fixture
+		if err := os.WriteFile(filepath.Join(dir, "2026-06-01-"+id+".md"), []byte(entry), 0o644); err != nil { // test fixture
 			t.Fatal(err)
 		}
 	}
@@ -225,7 +225,7 @@ func TestSubmitGroupedPR(t *testing.T) {
 	}
 	// each reason-log entry got the PR link.
 	for _, id := range []string{"p-a", "p-b"} {
-		got, err := os.ReadFile(filepath.Join(dir, "2026-06-01-"+id+".md")) //nolint:gosec // path is under the test temp dir
+		got, err := os.ReadFile(filepath.Join(dir, "2026-06-01-"+id+".md")) // path is under the test temp dir
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -239,7 +239,7 @@ func TestSubmitGroupSkipsDeclinedMembers(t *testing.T) {
 	// A declined member is dropped from the PR; the rest still ship.
 	dir := t.TempDir()
 	entry := strings.Replace(sampleEntry, "# glitch-skeleton", "# p-a", 1)
-	if err := os.WriteFile(filepath.Join(dir, "2026-06-01-p-a.md"), []byte(entry), 0o644); err != nil { //nolint:gosec // test fixture
+	if err := os.WriteFile(filepath.Join(dir, "2026-06-01-p-a.md"), []byte(entry), 0o644); err != nil { // test fixture
 		t.Fatal(err)
 	}
 	f := &fakeRunner{status: " M CLAUDE.md", prURL: "https://github.com/x/y/pull/9", diffNames: "CLAUDE.md\n"}
@@ -376,7 +376,7 @@ func TestSubmitDraftFlag(t *testing.T) {
 	for _, draft := range []bool{true, false} {
 		dir := t.TempDir()
 		rlPath := filepath.Join(dir, "2026-06-01-glitch-skeleton.md")
-		if err := os.WriteFile(rlPath, []byte(sampleEntry), 0o644); err != nil { //nolint:gosec // test fixture
+		if err := os.WriteFile(rlPath, []byte(sampleEntry), 0o644); err != nil { // test fixture
 			t.Fatal(err)
 		}
 		f := &fakeRunner{status: " M CLAUDE.md", prURL: "https://github.com/x/y/pull/9"}

@@ -15,7 +15,7 @@ func writeEntry(t *testing.T, dir, name, artifact, signal, outcome string) {
 		"**Fix type:** add  **Confidence:** high  **Date:** 2026-06-07\n\n" +
 		"## Diagnosis\n\nd\n\n**PR:** https://github.com/x/y/pull/1\n\n" +
 		"<!-- outcome: " + outcome + " -->\n"
-	if err := os.WriteFile(filepath.Join(dir, name+".md"), []byte(content), 0o644); err != nil { //nolint:gosec // test fixture
+	if err := os.WriteFile(filepath.Join(dir, name+".md"), []byte(content), 0o644); err != nil { // test fixture
 		t.Fatal(err)
 	}
 }
@@ -100,7 +100,7 @@ func writeRawEntry(t *testing.T, dir, name, tail string) string {
 		"**Artifact:** /repo/CLAUDE.md  \n" +
 		"**Signal:** tool_error  \n\n" +
 		"## Diagnosis\n\nd\n\n" + tail
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil { //nolint:gosec // test fixture
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil { // test fixture
 		t.Fatal(err)
 	}
 	return path
@@ -130,7 +130,7 @@ func TestMigrateOutcomeMarkers(t *testing.T) {
 	legacy := writeRawEntry(t, dir, "legacy", "**PR:** https://github.com/x/y/pull/1\n\n"+legacyOutcomeMarker+"\n")
 	unapplied := writeRawEntry(t, dir, "unapplied", PRPlaceholder+"\n")
 	writeEntry(t, dir, "current", "/repo/CLAUDE.md", "tool_error", OutcomeMerged)
-	currentBefore, err := os.ReadFile(filepath.Join(dir, "current.md")) //nolint:gosec // path is under the test temp dir
+	currentBefore, err := os.ReadFile(filepath.Join(dir, "current.md")) // path is under the test temp dir
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +157,7 @@ func TestMigrateOutcomeMarkers(t *testing.T) {
 	}
 
 	// The un-applied entry still needs its PR slot for a later applier run.
-	data, err := os.ReadFile(unapplied) //nolint:gosec // path is under the test temp dir
+	data, err := os.ReadFile(unapplied) // path is under the test temp dir
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +165,7 @@ func TestMigrateOutcomeMarkers(t *testing.T) {
 		t.Fatal("unapplied: PR placeholder must survive migration")
 	}
 
-	currentAfter, err := os.ReadFile(filepath.Join(dir, "current.md")) //nolint:gosec // path is under the test temp dir
+	currentAfter, err := os.ReadFile(filepath.Join(dir, "current.md")) // path is under the test temp dir
 	if err != nil {
 		t.Fatal(err)
 	}

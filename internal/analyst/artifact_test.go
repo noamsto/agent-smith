@@ -15,7 +15,7 @@ func TestClusterMarksLikelyResolved(t *testing.T) {
 	live := filepath.Join(dir, "LIVE.md")
 	fossil := filepath.Join(dir, "OLD.md")
 	for _, p := range []string{live, fossil} {
-		if err := os.WriteFile(p, []byte("# rule\n"), 0o644); err != nil { //nolint:gosec // test fixture
+		if err := os.WriteFile(p, []byte("# rule\n"), 0o644); err != nil { // test fixture
 			t.Fatal(err)
 		}
 	}
@@ -90,10 +90,10 @@ func TestClusterReattributesPointerArtifact(t *testing.T) {
 	dir := t.TempDir()
 	pointer := filepath.Join(dir, "CLAUDE.md")
 	target := filepath.Join(dir, "AGENTS.md")
-	if err := os.WriteFile(pointer, []byte("# CLAUDE.md\n\nSee @AGENTS.md\n"), 0o644); err != nil { //nolint:gosec // test fixture
+	if err := os.WriteFile(pointer, []byte("# CLAUDE.md\n\nSee @AGENTS.md\n"), 0o644); err != nil { // test fixture
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(target, []byte("# Conventions\n\nUse early returns.\n"), 0o644); err != nil { //nolint:gosec // test fixture
+	if err := os.WriteFile(target, []byte("# Conventions\n\nUse early returns.\n"), 0o644); err != nil { // test fixture
 		t.Fatal(err)
 	}
 	ins := `INSERT INTO incidents
@@ -130,7 +130,7 @@ func TestClusterReattributesPointerArtifact(t *testing.T) {
 func TestClusterFlagsUnresolvablePointerArtifact(t *testing.T) {
 	dir := t.TempDir()
 	pointer := filepath.Join(dir, "CLAUDE.md")
-	if err := os.WriteFile(pointer, []byte("See @AGENTS.md\n"), 0o644); err != nil { //nolint:gosec // test fixture
+	if err := os.WriteFile(pointer, []byte("See @AGENTS.md\n"), 0o644); err != nil { // test fixture
 		t.Fatal(err)
 	}
 	ins := `INSERT INTO incidents

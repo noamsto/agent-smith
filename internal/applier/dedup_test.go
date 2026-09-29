@@ -13,7 +13,7 @@ import (
 func writeProposals(t *testing.T, json string) string {
 	t.Helper()
 	pf := filepath.Join(t.TempDir(), "proposals.json")
-	if err := os.WriteFile(pf, []byte(json), 0o644); err != nil { //nolint:gosec // test fixture
+	if err := os.WriteFile(pf, []byte(json), 0o644); err != nil { // test fixture
 		t.Fatal(err)
 	}
 	return pf
@@ -24,7 +24,7 @@ func writeProposals(t *testing.T, json string) string {
 // link, and the deja-vu outcome placeholder unless resolved.
 func writeReasonLogEntry(t *testing.T, dir, id, artifact, prURL string, resolved bool) {
 	t.Helper()
-	if err := os.MkdirAll(dir, 0o755); err != nil { //nolint:gosec // test fixture
+	if err := os.MkdirAll(dir, 0o755); err != nil { // test fixture
 		t.Fatal(err)
 	}
 	content := "# " + id + "\n\n**Artifact:** " + artifact + "  \n\n## Diagnosis\n\nd\n\n"
@@ -36,7 +36,7 @@ func writeReasonLogEntry(t *testing.T, dir, id, artifact, prURL string, resolved
 	} else {
 		content += "<!-- outcome: " + analyst.OutcomeMerged + " -->\n"
 	}
-	if err := os.WriteFile(filepath.Join(dir, id+".md"), []byte(content), 0o644); err != nil { //nolint:gosec // test fixture
+	if err := os.WriteFile(filepath.Join(dir, id+".md"), []byte(content), 0o644); err != nil { // test fixture
 		t.Fatal(err)
 	}
 }
@@ -189,7 +189,7 @@ func TestPreparePerRepoDedup(t *testing.T) {
 	   "evidence":["s1:1"],"diagnosis":"d","proposed_change":"c","confidence":"high","reason_log":"r"}
 	]`
 	pf := filepath.Join(t.TempDir(), "proposals.json")
-	if err := os.WriteFile(pf, []byte(proposals), 0o644); err != nil { //nolint:gosec // test fixture
+	if err := os.WriteFile(pf, []byte(proposals), 0o644); err != nil { // test fixture
 		t.Fatal(err)
 	}
 
@@ -251,7 +251,7 @@ func TestPrepareDedupFailsOpen(t *testing.T) {
 	   "evidence":["s1:1"],"diagnosis":"d","proposed_change":"c","confidence":"high","reason_log":"r"}
 	]`
 	pf := filepath.Join(t.TempDir(), "proposals.json")
-	if err := os.WriteFile(pf, []byte(proposals), 0o644); err != nil { //nolint:gosec // test fixture
+	if err := os.WriteFile(pf, []byte(proposals), 0o644); err != nil { // test fixture
 		t.Fatal(err)
 	}
 	cfg := DedupConfig{OpenPRsForRepo: func(root string) ([]PullRequest, error) {
