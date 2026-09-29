@@ -10,7 +10,7 @@ import (
 
 func repoFile(t *testing.T, rel string) []byte {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join("..", "..", rel))
+	b, err := os.ReadFile(filepath.Join("..", "..", rel)) //nolint:gosec // fixed repo-relative test path
 	if err != nil {
 		t.Fatalf("read %s: %v", rel, err)
 	}

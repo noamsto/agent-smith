@@ -95,7 +95,7 @@ func TestScanVerdicts(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			art := filepath.Join(repo, tt.artifact)
 			writeFile(t, art, tt.line+"\n")
-			t.Cleanup(func() { os.Remove(art) })
+			t.Cleanup(func() { _ = os.Remove(art) })
 
 			r := newScanner(home, !tt.noGit).scan([]string{art}, Options{})
 			if !slices.Contains(r.Scanned, art) {
@@ -222,7 +222,7 @@ func TestScanSkipped(t *testing.T) {
 	dir := realTempDir(t)
 	missing := filepath.Join(dir, "missing.md")
 	unreadable := filepath.Join(dir, "adir")
-	if err := os.Mkdir(unreadable, 0o755); err != nil {
+	if err := os.Mkdir(unreadable, 0o755); err != nil { //nolint:gosec // test fixture
 		t.Fatal(err)
 	}
 
@@ -283,7 +283,7 @@ func TestReportJSON(t *testing.T) {
 	if err := WriteReport(in, path); err != nil {
 		t.Fatal(err)
 	}
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path) //nolint:gosec // path is under the test temp dir
 	if err != nil {
 		t.Fatal(err)
 	}

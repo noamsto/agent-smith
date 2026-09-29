@@ -87,7 +87,7 @@ func MigrateOutcomeMarkers(dir string) (int, error) {
 	}
 	migrated := 0
 	for _, path := range paths {
-		data, err := os.ReadFile(path)
+		data, err := os.ReadFile(path) //nolint:gosec // operator-supplied path
 		if err != nil {
 			return migrated, fmt.Errorf("read %s: %w", path, err)
 		}
@@ -96,7 +96,7 @@ func MigrateOutcomeMarkers(dir string) (int, error) {
 		if next == content {
 			continue
 		}
-		if err := os.WriteFile(path, []byte(next), 0o644); err != nil {
+		if err := os.WriteFile(path, []byte(next), 0o644); err != nil { //nolint:gosec // artifact is meant to be world-readable; holds no secrets
 			return migrated, fmt.Errorf("write %s: %w", path, err)
 		}
 		migrated++
@@ -176,7 +176,7 @@ func ReadEntries(dir string) ([]Entry, error) {
 	}
 	var out []Entry
 	for _, path := range paths {
-		data, err := os.ReadFile(path)
+		data, err := os.ReadFile(path) //nolint:gosec // operator-supplied path
 		if err != nil {
 			return nil, fmt.Errorf("read %s: %w", path, err)
 		}
@@ -229,7 +229,7 @@ func LinkReasonLog(dir, id, label, url string) error {
 	}
 	line := fmt.Sprintf("**%s:** ", label)
 	for _, path := range paths {
-		data, err := os.ReadFile(path)
+		data, err := os.ReadFile(path) //nolint:gosec // operator-supplied path
 		if err != nil {
 			continue
 		}
@@ -247,7 +247,7 @@ func LinkReasonLog(dir, id, label, url string) error {
 		// Entries written before the machine-readable marker existed carry none;
 		// without one Reconcile can never stamp the outcome.
 		content = EnsureOutcomeMarker(content)
-		return os.WriteFile(path, []byte(content), 0o644)
+		return os.WriteFile(path, []byte(content), 0o644) //nolint:gosec // artifact is meant to be world-readable; holds no secrets
 	}
 	return fmt.Errorf("no reason-log entry with heading %q in %s", id, dir)
 }

@@ -55,7 +55,7 @@ func StripCodeFence(b []byte) []byte {
 
 func fnv32a(s string) uint32 {
 	h := fnv.New32a()
-	h.Write([]byte(s))
+	h.Write([]byte(s)) //nolint:gosec // hash.Hash.Write never returns an error
 	return h.Sum32()
 }
 
@@ -92,7 +92,7 @@ func LoadProposals(dir string) ([]Proposal, []error) {
 	var errs []error
 	seen := map[string]bool{}
 	for _, p := range paths {
-		data, err := os.ReadFile(p)
+		data, err := os.ReadFile(p) //nolint:gosec // path comes from the proposals glob the operator passed
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", p, err))
 			continue
@@ -125,14 +125,14 @@ func WriteProposals(props []Proposal, outPath string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(outPath, append(data, '\n'), 0o644)
+	return os.WriteFile(outPath, append(data, '\n'), 0o644) //nolint:gosec // artifact is meant to be world-readable; holds no secrets
 }
 
 // WriteReasonLogs writes one append-only markdown file per proposal under dir,
 // named <date>-<slug>.md. Existing files are left untouched (the ledger is
 // append-only across runs). Returns how many new files were written.
 func WriteReasonLogs(props []Proposal, dir, date string) (int, error) {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil { //nolint:gosec // artifact is meant to be world-readable; holds no secrets
 		return 0, err
 	}
 	written := 0
@@ -161,7 +161,7 @@ func WriteReasonLogs(props []Proposal, dir, date string) (int, error) {
 		fmt.Fprintf(&b, "%s\n", outcomeMarker(OutcomeOpen))
 
 		// O_EXCL makes append-only atomic: refuse to clobber an existing entry.
-		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644) //nolint:gosec // artifact is meant to be world-readable; holds no secrets
 		if err != nil {
 			if os.IsExist(err) {
 				continue
@@ -169,7 +169,7 @@ func WriteReasonLogs(props []Proposal, dir, date string) (int, error) {
 			return written, err
 		}
 		if _, err := f.WriteString(b.String()); err != nil {
-			f.Close()
+			_ = f.Close()
 			return written, err
 		}
 		if err := f.Close(); err != nil {

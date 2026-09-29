@@ -33,7 +33,7 @@ func duckDBBin() string {
 
 // runDuckDB pipes a SQL script to the duckdb CLI over stdin and returns stdout.
 func runDuckDB(ctx context.Context, db, script string) (string, error) {
-	cmd := exec.CommandContext(ctx, duckDBBin(), db)
+	cmd := exec.CommandContext(ctx, duckDBBin(), db) //nolint:gosec // fixed binary; args are passed as argv, not through a shell
 	cmd.Stdin = strings.NewReader(script)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -119,7 +119,7 @@ func (c Coverage) String() string {
 // disk is a rolling retention window, so the db is the only record of anything
 // older; printing its span is what makes a truncated history visible.
 func ReadCoverage(ctx context.Context, db string) (Coverage, error) {
-	out, err := exec.CommandContext(ctx, duckDBBin(), "-json", db, "-c",
+	out, err := exec.CommandContext(ctx, duckDBBin(), "-json", db, "-c", //nolint:gosec // fixed binary; args are passed as argv, not through a shell
 		`SELECT min(substr(ts,1,10)) AS first, max(substr(ts,1,10)) AS last,
 		        count(*) AS incidents, count(DISTINCT session_id) AS sessions
 		 FROM incidents;`).Output()

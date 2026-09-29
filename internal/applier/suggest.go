@@ -30,7 +30,10 @@ func Suggest(plan []PlanEntry, props []analyst.Proposal) string {
 	fmt.Fprintf(&b, "%d PR(s) across grouped proposals; %d skipped.\n", len(groups), skipped)
 
 	for _, gid := range groups {
-		entries, _ := FindGroup(plan, gid)
+		entries, err := FindGroup(plan, gid)
+		if err != nil {
+			continue
+		}
 		head := entries[0]
 		fmt.Fprintf(&b, "\n## PR `%s` — %d proposal(s)\n\n", head.BranchName, len(entries))
 		fmt.Fprintf(&b, "**Artifact:** %s  \n", head.FilePath)
@@ -69,5 +72,5 @@ func Suggest(plan []PlanEntry, props []analyst.Proposal) string {
 
 // WriteSuggestions writes the rendered index to out.
 func WriteSuggestions(s, out string) error {
-	return os.WriteFile(out, []byte(s), 0o644)
+	return os.WriteFile(out, []byte(s), 0o644) //nolint:gosec // artifact is meant to be world-readable; holds no secrets
 }

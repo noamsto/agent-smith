@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"syscall"
@@ -161,7 +162,7 @@ func dedupClean(paths []string) []string {
 // so a permission error never makes a present path look dead.
 func exists(p string) bool {
 	_, err := os.Stat(p)
-	return err == nil || !(errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR))
+	return err == nil || (!errors.Is(err, fs.ErrNotExist) && !errors.Is(err, syscall.ENOTDIR))
 }
 
 // knownExts are the extensions `.Ident` symbol trimming must not strip, so
@@ -227,16 +228,12 @@ func (s *scanner) live(c Candidate, a artifact, bases []string) bool {
 			}
 		}
 	}
-	for _, b := range probe {
-		if exists(b) {
-			return true
-		}
+	if slices.ContainsFunc(probe, exists) {
+		return true
 	}
 	for _, b := range probe {
-		for _, t := range symbolTrims(b) {
-			if exists(t) {
-				return true
-			}
+		if slices.ContainsFunc(symbolTrims(b), exists) {
+			return true
 		}
 	}
 
@@ -248,12 +245,7 @@ func (s *scanner) live(c Candidate, a artifact, bases []string) bool {
 		tok = tok[2:]
 	}
 	idx := s.repoIndex(a.Root)
-	for _, t := range append([]string{tok}, symbolTrims(tok)...) {
-		if idx.hasSuffix(t) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(append([]string{tok}, symbolTrims(tok)...), idx.hasSuffix)
 }
 
 // downgrade reports whether a missing Confident ref must be demoted to
@@ -274,7 +266,7 @@ func (s *scanner) downgrade(c Candidate, a artifact, bases []string) bool {
 	if err != nil {
 		return true
 	}
-	err = exec.Command("git", "-C", root, "check-ignore", "-q", "--", rel).Run()
+	err = exec.Command("git", "-C", root, "check-ignore", "-q", "--", rel).Run() //nolint:gosec // fixed binary; args are passed as argv, not through a shell
 	var exitErr *exec.ExitError
 	if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
 		return false
@@ -338,7 +330,7 @@ func (s *scanner) repoIndex(root string) *repoIndex {
 	_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			idx.incomplete = true
-			return nil
+			return nil //nolint:nilerr // unreadable entries are recorded as incomplete, not fatal
 		}
 		if p == root {
 			return nil
@@ -353,7 +345,7 @@ func (s *scanner) repoIndex(root string) *repoIndex {
 		}
 		rel, err := filepath.Rel(root, p)
 		if err != nil {
-			return nil
+			return nil //nolint:nilerr // unrelatable entries are skipped; the walk continues
 		}
 		rel = filepath.ToSlash(rel)
 		idx.paths = append(idx.paths, rel)

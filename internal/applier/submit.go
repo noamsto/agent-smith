@@ -18,7 +18,7 @@ type runner func(dir, name string, args ...string) ([]byte, error)
 
 // execRunner is the production runner.
 func execRunner(dir, name string, args ...string) ([]byte, error) {
-	c := exec.Command(name, args...)
+	c := exec.Command(name, args...) //nolint:gosec // fixed binary; args are passed as argv, not through a shell
 	c.Dir = dir
 	// A fresh worktree may lack .pre-commit-config.yaml while the repo's
 	// commit hook still invokes pre-commit; without this the hook hard-fails
@@ -53,8 +53,8 @@ func ParseEditorResult(data []byte) (EditorResult, error) {
 }
 
 func firstLine(s string) string {
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
-		return s[:i]
+	if before, _, ok := strings.Cut(s, "\n"); ok {
+		return before
 	}
 	return s
 }
@@ -159,7 +159,7 @@ func groupMessage(t Target, items []GroupItem) (title, body string) {
 	if len(items) == 1 {
 		return singleMessage(items[0].Proposal, items[0].Editor)
 	}
-	prefix := strings.SplitN(t.BranchName, "/", 2)[0]
+	prefix, _, _ := strings.Cut(t.BranchName, "/")
 	artifact := filepath.Base(t.FilePath)
 	title = fmt.Sprintf("%s: apply %d agent-smith proposals to %s", prefix, len(items), artifact)
 

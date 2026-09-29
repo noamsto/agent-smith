@@ -79,7 +79,7 @@ func runCluster(args []string) {
 	if droppedUnresolved > 0 {
 		fmt.Fprintf(os.Stderr, "%d cluster(s) excluded: the artifact is a redirect-only pointer file whose @import could not be resolved\n", droppedUnresolved)
 	}
-	if droppedTop > 0 {
+	if droppedTop > 0 && len(fleet) > 0 {
 		cutoff := fleet[len(fleet)-1]
 		fmt.Fprintf(os.Stderr, "--top %d: dropped %d lower-signal cluster(s); cutoff at %d recent / %d lifetime sessions\n",
 			*top, droppedTop, cutoff.RecentSessions, cutoff.DistinctSessions)

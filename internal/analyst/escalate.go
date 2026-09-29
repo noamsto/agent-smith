@@ -44,7 +44,7 @@ func LoadVerdicts(dir string) map[string]Verdict {
 	sort.Strings(paths)
 	out := map[string]Verdict{}
 	for _, p := range paths {
-		data, err := os.ReadFile(p)
+		data, err := os.ReadFile(p) //nolint:gosec // operator-supplied path
 		if err != nil {
 			continue
 		}
@@ -74,7 +74,7 @@ type IssueFiler func(title, body string) (string, error)
 // GhIssueFiler files issues against repo with the gh CLI.
 func GhIssueFiler(repo string) IssueFiler {
 	return func(title, body string) (string, error) {
-		out, err := exec.Command("gh", "issue", "create", "--repo", repo,
+		out, err := exec.Command("gh", "issue", "create", "--repo", repo, //nolint:gosec // fixed binary; args are passed as argv, not through a shell
 			"--title", title, "--body", body).CombinedOutput()
 		if err != nil {
 			return "", fmt.Errorf("gh issue create: %w: %s", err, strings.TrimSpace(string(out)))

@@ -65,13 +65,13 @@ func copyTree(t *testing.T, src, dst string) {
 		}
 		target := filepath.Join(dst, rel)
 		if d.IsDir() {
-			return os.MkdirAll(target, 0o755)
+			return os.MkdirAll(target, 0o755) //nolint:gosec // test fixture
 		}
-		b, err := os.ReadFile(p)
+		b, err := os.ReadFile(p) //nolint:gosec // path is under the test temp dir
 		if err != nil {
 			return err
 		}
-		return os.WriteFile(target, b, 0o644)
+		return os.WriteFile(target, b, 0o644) //nolint:gosec // test fixture
 	})
 	if err != nil {
 		t.Fatalf("copy tree: %v", err)
@@ -172,7 +172,7 @@ func duckDBBin() string {
 
 func runDuckDBScript(t *testing.T, db, script string) {
 	t.Helper()
-	cmd := exec.Command(duckDBBin(), db)
+	cmd := exec.Command(duckDBBin(), db) //nolint:gosec // test helper running a fixed binary
 	cmd.Stdin = strings.NewReader(script)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("duckdb: %v\n%s", err, out)

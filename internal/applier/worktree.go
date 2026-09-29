@@ -29,15 +29,15 @@ func Open(t Target) (string, error) {
 	newBranch := "-b"
 	if branchExists(t.RepoRoot, t.BranchName) {
 		if !branchEmpty(t.RepoRoot, t.BranchName, start) {
-			os.RemoveAll(wt)
+			_ = os.RemoveAll(wt)
 			return "", fmt.Errorf("branch %s already exists with commits; refusing to reset", t.BranchName)
 		}
 		newBranch = "-B"
 	}
 	out, err := git(t.RepoRoot, "worktree", "add", wt, newBranch, t.BranchName, start)
 	if err != nil {
-		os.RemoveAll(wt)
-		return "", fmt.Errorf("git worktree add: %v: %s", err, strings.TrimSpace(string(out)))
+		_ = os.RemoveAll(wt)
+		return "", fmt.Errorf("git worktree add: %w: %s", err, strings.TrimSpace(string(out)))
 	}
 	return wt, nil
 }
@@ -64,7 +64,7 @@ func branchEmpty(repoRoot, branch, start string) bool {
 // worktree was dropped.
 func CleanupAfterSubmit(repoRoot, wt string, submitErr error) (dropped bool, err error) {
 	if submitErr != nil {
-		return false, nil
+		return false, nil //nolint:nilerr // submitErr is the caller's failure, not this function's
 	}
 	return true, Drop(repoRoot, wt)
 }
@@ -74,7 +74,7 @@ func CleanupAfterSubmit(repoRoot, wt string, submitErr error) (dropped bool, err
 func Drop(repoRoot, wt string) error {
 	out, err := git(repoRoot, "worktree", "remove", "--force", wt)
 	if err != nil {
-		return fmt.Errorf("git worktree remove: %v: %s", err, strings.TrimSpace(string(out)))
+		return fmt.Errorf("git worktree remove: %w: %s", err, strings.TrimSpace(string(out)))
 	}
 	return nil
 }

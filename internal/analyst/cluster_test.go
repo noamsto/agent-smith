@@ -69,7 +69,7 @@ func TestClusterDBBundlesArtifactContent(t *testing.T) {
 	// Real artifact file on disk for the cluster's artifact path.
 	dir := t.TempDir()
 	artifact := filepath.Join(dir, "CLAUDE.md")
-	if err := os.WriteFile(artifact, []byte("# Reading Code (skeleton-first)\nDon't read whole files.\n"), 0o644); err != nil {
+	if err := os.WriteFile(artifact, []byte("# Reading Code (skeleton-first)\nDon't read whole files.\n"), 0o644); err != nil { //nolint:gosec // test fixture
 		t.Fatal(err)
 	}
 	missing := filepath.Join(dir, "gone", "CLAUDE.md")
@@ -124,7 +124,7 @@ func TestClusterCanonicalizesWorktreePaths(t *testing.T) {
 	// cluster whose canonical root file no longer exists.
 	repo := t.TempDir()
 	root := filepath.Join(repo, "CLAUDE.md")
-	if err := os.WriteFile(root, []byte("# rule\n"), 0o644); err != nil {
+	if err := os.WriteFile(root, []byte("# rule\n"), 0o644); err != nil { //nolint:gosec // test fixture
 		t.Fatal(err)
 	}
 	wtA := filepath.Join(repo, ".worktrees", "feat-a", "CLAUDE.md")
@@ -170,7 +170,7 @@ func TestClusterDBCapsBloat(t *testing.T) {
 	dir := t.TempDir()
 	artifact := filepath.Join(dir, "CLAUDE.md")
 	bigContent := strings.Repeat("x", maxArtifactContentBytes+5000)
-	if err := os.WriteFile(artifact, []byte(bigContent), 0o644); err != nil {
+	if err := os.WriteFile(artifact, []byte(bigContent), 0o644); err != nil { //nolint:gosec // test fixture
 		t.Fatal(err)
 	}
 	bigExcerpt := strings.Repeat("y", maxWindowExcerptBytes+2000)
@@ -240,7 +240,7 @@ func TestWriteClustersPerFileAndIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	idxData, err := os.ReadFile(indexPath)
+	idxData, err := os.ReadFile(indexPath) //nolint:gosec // path is under the test temp dir
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -260,7 +260,7 @@ func TestWriteClustersPerFileAndIndex(t *testing.T) {
 
 	for _, e := range index {
 		full := filepath.Join(dir, e.File)
-		data, err := os.ReadFile(full)
+		data, err := os.ReadFile(full) //nolint:gosec // path is under the test temp dir
 		if err != nil {
 			t.Fatalf("per-cluster file %s missing: %v", e.File, err)
 		}
@@ -577,7 +577,7 @@ func TestWriteClustersPrunesStaleFiles(t *testing.T) {
 
 	// A non-cluster file in the dir is left alone.
 	keep := filepath.Join(dir, "clusters", "notes.txt")
-	if err := os.WriteFile(keep, []byte("x"), 0o644); err != nil {
+	if err := os.WriteFile(keep, []byte("x"), 0o644); err != nil { //nolint:gosec // test fixture
 		t.Fatal(err)
 	}
 	if err := WriteClusters(first[:1], index); err != nil {

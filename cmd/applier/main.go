@@ -193,7 +193,7 @@ func runSubmit(args []string) {
 }
 
 func loadAllProposals(path string) ([]analyst.Proposal, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // operator-supplied CLI path
 	if err != nil {
 		return nil, fmt.Errorf("read proposals %s: %w", path, err)
 	}
@@ -279,7 +279,7 @@ func loadEditorResult(path string) (applier.EditorResult, error) {
 	if path == "" {
 		return applier.EditorResult{}, fmt.Errorf("--editor-result is required")
 	}
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // operator-supplied CLI path
 	if err != nil {
 		return applier.EditorResult{}, fmt.Errorf("read editor-result %s: %w", path, err)
 	}

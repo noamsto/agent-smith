@@ -39,7 +39,7 @@ func TestClusterPipelineEndToEnd(t *testing.T) {
 	backlogArtifact := filepath.Join(globalDir, "OLD.md")
 
 	for _, p := range []string{globalArtifact, repoArtifact, zombieArtifact, backlogArtifact} {
-		if err := os.WriteFile(p, []byte("# placeholder\n"), 0o644); err != nil {
+		if err := os.WriteFile(p, []byte("# placeholder\n"), 0o644); err != nil { //nolint:gosec // test fixture
 			t.Fatal(err)
 		}
 	}
