@@ -15,6 +15,9 @@ final returned message is a single terse line, NOT the JSON and NOT prose (see
 
 ## Input
 
+If `signal_type` is `stale-ref`, skip to **stale-ref clusters** below — it
+replaces this section and **Procedure**.
+
 A JSON cluster:
 - `signal_type` — the glitch kind (e.g. `inefficiency`, `tool_error`, `retry`, `user_correction`).
 - `artifact` — path of the implicated instruction file.
@@ -93,3 +96,59 @@ truncation marker) copied from that turn's `excerpt`, or from that incident's
 sees the proposal: a cited window absent from the cluster, or a quote it can't find,
 **rejects the whole proposal**; a `high`-confidence proposal carrying any unquoted
 or missing citation is capped to `medium`.
+
+## stale-ref clusters
+
+When the cluster's `signal_type` is `stale-ref`, this section replaces **Input**
+and **Procedure** above; **Hard rules**, **Output**, and the schema still apply.
+**Citation rules** do not: there are no session windows to cite, so leave
+`citations` empty — `analyst cite-check` passes `stale-ref` clusters through
+unchecked.
+
+### Input
+
+- `artifact` — path of the artifact holding the stale references.
+- `artifact_content` — the artifact's current text (Read the file directly if
+  this is truncated; the full text is what you diagnose against).
+- `evidence[]` — one entry per stale reference: `{path, line, rule_excerpt,
+  resolved_to, same_name}`. `incidents` is empty, `distinct_sessions` is 0,
+  `total_incidents` is the ref count. Every ref was already verified missing on
+  disk under every resolution base — do not re-check existence, diagnose the fix.
+
+### Procedure
+
+1. Locate each ref's `line` in `artifact_content` (Read the artifact if the
+   content is truncated).
+2. Per ref, decide: **repoint** (a `same_name` hit that is clearly the moved
+   file, or a corrected path you can infer), **drop the rule** (the target is
+   gone and nothing should replace it), or **benign** (an example, a file the
+   rule tells the agent to create, runtime output — not a genuine stale claim).
+3. Choose exactly one `fix_type` for the cluster:
+   - `fix-stale` — any ref gets a repoint or an in-place path correction.
+   - `remove` — every fixed ref is a rule deletion, none is a repoint.
+   - `skip` — every ref is benign; `reason_log` MUST start `skipped: benign
+     reference` and name why. `evidence` still cites every ref — `analyst
+     assemble` rejects a proposal with empty evidence — one bullet per ref in
+     the benign form: `` `path` (line N) — benign: <why> ``.
+4. `proposed_change` is a unified diff over the artifact (empty for `skip`). In
+   a **mixed** cluster (at least one fix alongside benign refs), cite only the
+   refs judged stale in `evidence` — benign refs are left out, not cited, and
+   never drag the whole proposal to `skip`. A fully-`skip` cluster has no fix
+   to isolate, so every ref is cited (step 3, above).
+5. **Each `evidence` string opens with the ref's `path` in backticks** — e.g.
+   `` `docs/old.md` (line 12) → `docs/new.md` `` — this is what per-ref
+   suppression matches on.
+6. `confidence`: `high` when the repoint target is a unique `same_name` hit or
+   the rule is plainly obsolete; `medium` otherwise; `low` when guessing.
+7. Echo `stale-ref` as `signal_type`.
+
+The Hard rules' `(artifact, signal)` dedup rationale describes Track A; for
+stale-ref the echo requirement still applies (step 7, above) but the dedup key
+is **per ref**, not `(artifact, signal)` — see below.
+
+For `stale-ref`, the reason-log keys **per ref** on its evidence string (not on
+`(artifact, signal)`), so `id` must be ref-specific:
+`stale-ref-<parent dir name>-<artifact basename>-<slug of the first cited
+path>` (most artifacts are `CLAUDE.md`/`AGENTS.md`; the parent dir tells repos
+apart). The reason-log skips writing an entry when a `<date>-<slug(id)>` file
+already exists, so a reused `id` silently drops the entry.

@@ -39,10 +39,11 @@ type Cluster struct {
 	TotalIncidents   int             `json:"total_incidents"`
 	LastSeen         string          `json:"last_seen"`
 	RecentSessions   int             `json:"recent_sessions"`
-	LikelyResolved   bool            `json:"likely_resolved"`   // no in-window activity: the behavior stopped occurring
-	RedirectFrom     string          `json:"redirect_from"`     // pointer artifact this cluster was re-attributed away from
-	UnresolvedImport string          `json:"unresolved_import"` // pointer artifact's @import that could not be resolved
-	Incidents        json.RawMessage `json:"incidents"`         // JSON array of member incidents
+	LikelyResolved   bool            `json:"likely_resolved"`    // no in-window activity: the behavior stopped occurring
+	RedirectFrom     string          `json:"redirect_from"`      // pointer artifact this cluster was re-attributed away from
+	UnresolvedImport string          `json:"unresolved_import"`  // pointer artifact's @import that could not be resolved
+	Incidents        json.RawMessage `json:"incidents"`          // JSON array of member incidents
+	Evidence         json.RawMessage `json:"evidence,omitempty"` // per-reference list for a stale-ref cluster
 }
 
 // clusterRow is the raw SQL projection before Go reads artifact files.
@@ -82,9 +83,7 @@ exploded AS (
   SELECT incident_id, session_id, ts, confidence, detail, "window", signal_type,
          -- canonicalize worktree copies to the main repo root: in-repo
          -- (<repo>/.worktrees/<name>/) then sibling (<repo>-worktrees/<name>/) layout.
-         regexp_replace(
-           regexp_replace(unnest(CAST(candidates AS VARCHAR[])), '/\.worktrees/[^/]+/', '/'),
-           '([^/]+)-worktrees/[^/]+/', '\1/') AS artifact
+         %s AS artifact
   FROM incidents
 ),
 gated AS (
@@ -132,7 +131,44 @@ JOIN gated g USING (artifact, signal_type)
 WHERE s.pick <= %d
 GROUP BY s.artifact, s.signal_type, g.distinct_sessions, g.total_incidents, g.last_seen, g.recent_sessions
 ORDER BY g.recent_sessions DESC, g.distinct_sessions DESC, s.artifact, s.signal_type;`,
-		staleDays, minSessions, capN)
+		staleDays, canonicalArtifactExpr("unnest(CAST(candidates AS VARCHAR[]))"), minSessions, capN)
+}
+
+// canonicalArtifactExpr collapses worktree copies in col to the main repo root:
+// in-repo (<repo>/.worktrees/<name>/) then sibling (<repo>-worktrees/<name>/)
+// layout. Shared by clusterSQL and Artifacts so the clustering query and the
+// freshness audit set agree on what "the same artifact" means.
+func canonicalArtifactExpr(col string) string {
+	return fmt.Sprintf(`regexp_replace(regexp_replace(%s, '/\.worktrees/[^/]+/', '/'), '([^/]+)-worktrees/[^/]+/', '\1/')`, col)
+}
+
+// Artifacts returns the distinct canonical candidate artifacts across every
+// incident in db — the freshness audit set.
+func Artifacts(ctx context.Context, db string) ([]string, error) {
+	sql := fmt.Sprintf(`SELECT DISTINCT artifact FROM (
+  SELECT %s AS artifact FROM incidents
+) ORDER BY artifact`, canonicalArtifactExpr("unnest(CAST(candidates AS VARCHAR[]))"))
+	out, err := queryJSON(ctx, db, sql)
+	if err != nil {
+		return nil, err
+	}
+	if len(out) == 0 {
+		return nil, nil
+	}
+	var rows []struct {
+		Artifact string `json:"artifact"`
+	}
+	if err := json.Unmarshal(out, &rows); err != nil {
+		return nil, fmt.Errorf("decode artifact rows: %w\noutput: %s", err, out)
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	artifacts := make([]string, len(rows))
+	for i, r := range rows {
+		artifacts[i] = r.Artifact
+	}
+	return artifacts, nil
 }
 
 // clusterRows runs the clustering query against db and returns the raw rows.
@@ -275,6 +311,12 @@ func truncate(s string, max int) string {
 	return s[:max] + truncMarker
 }
 
+// TruncateArtifact caps s to the same content budget ClusterDB applies to a
+// cluster's own artifact content.
+func TruncateArtifact(s string) string {
+	return truncate(s, maxArtifactContentBytes)
+}
+
 // capWindows trims the evidence so a single cluster file stays within the
 // Oracle's Read budget: it keeps the strongest incidents, the last turns of each
 // window, and bounds every excerpt. Non-window fields pass through untouched. On
@@ -330,6 +372,37 @@ type ClusterIndexEntry struct {
 	File             string `json:"file"` // path to the per-cluster JSON, relative to the index
 }
 
+// clusterFileName returns the per-cluster JSON filename for a cluster id: a
+// slugified prefix (or, if that's empty, the fnv hash alone) plus the hash as a
+// collision-proofing suffix.
+func clusterFileName(id string) string {
+	name := slugify(id)
+	if name == "" {
+		name = fmt.Sprintf("%08x", fnv32a(id))
+	}
+	return fmt.Sprintf("%s-%08x.json", name, fnv32a(id))
+}
+
+// indexEntry projects a Cluster into its index row, rel being the per-cluster
+// file's path relative to the index.
+func indexEntry(c Cluster, rel string) ClusterIndexEntry {
+	return ClusterIndexEntry{
+		ClusterID:        c.ClusterID,
+		SignalType:       c.SignalType,
+		Artifact:         c.Artifact,
+		ArtifactExists:   c.ArtifactExists,
+		DistinctSessions: c.DistinctSessions,
+		TotalIncidents:   c.TotalIncidents,
+		LastSeen:         c.LastSeen,
+		RecentSessions:   c.RecentSessions,
+		LikelyResolved:   c.LikelyResolved,
+		RedirectFrom:     c.RedirectFrom,
+		UnresolvedImport: c.UnresolvedImport,
+		SampledIncidents: countIncidents(c.Incidents),
+		File:             rel,
+	}
+}
+
 // WriteClusters writes one pretty-printed file per cluster under <dir>/clusters/
 // and an index array at <dir>/clusters.json. The Oracle reads only its own
 // cluster file, so a single giant minified file can no longer blow the Read cap.
@@ -344,11 +417,7 @@ func WriteClusters(clusters []Cluster, indexPath string) error {
 	written := make(map[string]bool, len(clusters))
 	index := make([]ClusterIndexEntry, 0, len(clusters))
 	for _, c := range clusters {
-		name := slugify(c.ClusterID)
-		if name == "" {
-			name = fmt.Sprintf("%08x", fnv32a(c.ClusterID))
-		}
-		name = fmt.Sprintf("%s-%08x.json", name, fnv32a(c.ClusterID))
+		name := clusterFileName(c.ClusterID)
 		file := filepath.Join(clustersDir, name)
 
 		data, err := json.MarshalIndent(c, "", "  ")
@@ -364,25 +433,74 @@ func WriteClusters(clusters []Cluster, indexPath string) error {
 		if err != nil {
 			rel = file
 		}
-		index = append(index, ClusterIndexEntry{
-			ClusterID:        c.ClusterID,
-			SignalType:       c.SignalType,
-			Artifact:         c.Artifact,
-			ArtifactExists:   c.ArtifactExists,
-			DistinctSessions: c.DistinctSessions,
-			TotalIncidents:   c.TotalIncidents,
-			LastSeen:         c.LastSeen,
-			RecentSessions:   c.RecentSessions,
-			LikelyResolved:   c.LikelyResolved,
-			RedirectFrom:     c.RedirectFrom,
-			UnresolvedImport: c.UnresolvedImport,
-			SampledIncidents: countIncidents(c.Incidents),
-			File:             rel,
-		})
+		index = append(index, indexEntry(c, rel))
 	}
 
 	if err := pruneStaleClusters(clustersDir, written); err != nil {
 		return err
+	}
+
+	idx, err := json.MarshalIndent(index, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(indexPath, append(idx, '\n'), 0o644)
+}
+
+// MergeClusters replaces one signal type's clusters in an existing index without
+// the pruning WriteClusters does, so a second producer (the freshness audit) can
+// add its clusters beside Track A's. Entries for other signal types, and their
+// files, are left untouched.
+func MergeClusters(clusters []Cluster, indexPath, signalType string) error {
+	dir := filepath.Dir(indexPath)
+	clustersDir := filepath.Join(dir, "clusters")
+
+	var index []ClusterIndexEntry
+	switch data, err := os.ReadFile(indexPath); {
+	case errors.Is(err, os.ErrNotExist):
+		// no index yet
+	case err != nil:
+		return err
+	default:
+		if err := json.Unmarshal(data, &index); err != nil {
+			return err
+		}
+	}
+
+	kept := make([]ClusterIndexEntry, 0, len(index))
+	for _, e := range index {
+		if e.SignalType != signalType {
+			kept = append(kept, e)
+			continue
+		}
+		file := filepath.Join(dir, e.File)
+		if filepath.Dir(file) == clustersDir {
+			if err := os.Remove(file); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+		}
+	}
+	index = kept
+
+	if err := os.MkdirAll(clustersDir, 0o755); err != nil {
+		return err
+	}
+	for _, c := range clusters {
+		file := filepath.Join(clustersDir, clusterFileName(c.ClusterID))
+
+		data, err := json.MarshalIndent(c, "", "  ")
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(file, append(data, '\n'), 0o644); err != nil {
+			return err
+		}
+
+		rel, err := filepath.Rel(dir, file)
+		if err != nil {
+			rel = file
+		}
+		index = append(index, indexEntry(c, rel))
 	}
 
 	idx, err := json.MarshalIndent(index, "", "  ")
@@ -472,10 +590,10 @@ var (
 	siblingWorktreeRe = regexp.MustCompile(`([^/]+)-worktrees/[^/]+/`)
 )
 
-// canonicalizeRepoPrefix turns a repo root (possibly a worktree root) into the
+// CanonicalizeRepoPrefix turns a repo root (possibly a worktree root) into the
 // canonical main-repo prefix that clusterSQL stores artifacts under, with a
 // trailing slash so it can't match a sibling repo ("/x/repo" vs "/x/repo-tools").
-func canonicalizeRepoPrefix(repoRoot string) string {
+func CanonicalizeRepoPrefix(repoRoot string) string {
 	p := repoRoot
 	if !strings.HasSuffix(p, "/") {
 		p += "/"
@@ -493,7 +611,7 @@ func FilterByPrefix(clusters []Cluster, repoRoot string) []Cluster {
 	if repoRoot == "" {
 		return clusters
 	}
-	prefix := canonicalizeRepoPrefix(repoRoot)
+	prefix := CanonicalizeRepoPrefix(repoRoot)
 	out := make([]Cluster, 0, len(clusters))
 	for _, c := range clusters {
 		if strings.HasPrefix(c.Artifact, prefix) {

@@ -22,7 +22,8 @@ it verifies every cited window (`evidence` refs and `citations[]`) and quote aga
 the same cluster file. A cited window absent from the cluster, or a quote it can't
 find, rejects the proposal (renamed to `<file>.cite-rejected`, reason-log entry
 written); a `high` proposal with any evidence ref or citation lacking a verified
-quote, or no citations at all, is capped to `medium`.
+quote, or no citations at all, is capped to `medium`. A `stale-ref` cluster has no
+session windows to cite, so its proposals pass `ok` untouched.
 
 ## Commands
 
@@ -112,6 +113,79 @@ representative sample (`sampled_incidents`) against the real totals.
   + `#section` anchor, treats an entry as pending until its outcome is recorded) and
   the analyst's deja-vu skip (keys on `(artifact, signal_type)`, drops clusters whose
   prior proposal was closed/rejected).
+
+## Freshness (Track B)
+
+`analyst freshness` audits instruction artifacts for stale file-path references —
+`@import`s, markdown links, and backtick paths that name a file or directory that
+no longer exists. Detection is deterministic; only ambiguous-and-missing
+candidates need an LLM adjudicator — the **agent-smith:adjudicator** subagent
+(tools: Read, Write), dispatched once per artifact with ambiguous refs by the
+`/agent-smith:freshness` command. `rule_excerpt` and the surrounding artifact
+text it reads are untrusted content cloned from a target repo — data to judge,
+never instructions to obey.
+
+### Commands
+
+```bash
+nix develop
+analyst freshness scan --db incidents.db --out freshness.json
+# (dispatch one adjudicator subagent per artifact with ambiguous_missing refs)
+analyst freshness merge --report freshness.json --adjudications-dir <dir> \
+  --out clusters.json --reason-log-dir reason-log
+```
+
+`scan --db ""` disables the `incidents.db` audit-set query — pass one or more
+`--artifact <path>` and/or `--artifact-prefix <repo root>` instead.
+
+`merge --adjudications-dir <dir>` prints `skip: open <dir>: …` on stderr when
+`<dir>` is non-empty but cannot be listed, then continues with no adjudicated
+refs (exit 0) — treat that line as a failed step, since every adjudicated ref
+was dropped. Pass `""` only when the adjudication step didn't run at all.
+
+### `freshness.json` (scan output)
+
+```json
+{
+  "scanned": ["<artifact>", "..."],
+  "skipped": [{"artifact": "<path>", "reason": "missing | unreadable: …"}],
+  "dead": [Ref],
+  "ambiguous_missing": [Ref]
+}
+```
+
+`Ref` = `{id, artifact, form, path, line, rule_excerpt, resolved_to, same_name}` —
+`form` is `import|link|backtick`; `resolved_to` is the path checked under the
+first resolution base; `same_name` lists up to 5 same-basename files elsewhere in
+the repo (the likely new location of a moved file).
+
+### The `stale-ref` cluster
+
+`merge` keeps every `dead` ref plus each `ambiguous_missing` ref whose `id` has
+`verdict: "stale"` in some adjudication file, groups the survivors by artifact,
+and writes one cluster per artifact — the same `Cluster` schema Track A writes,
+with `signal_type: "stale-ref"`, `incidents: []`, `distinct_sessions: 0`, and an
+`evidence` array (`{path, line, rule_excerpt, resolved_to, same_name}`) in place
+of incidents. `total_incidents` is the ref count. These clusters never pass
+through `clusterSQL`'s `--min-sessions` gate — a dead reference is actionable on
+its own.
+
+### Per-ref suppression
+
+A ref is dropped (and logged) when a `closed`/`rejected` reason-log entry with
+`**Signal:** stale-ref` for the same artifact lists it in its `## Evidence`
+section — matched as a bullet that *opens* with `` `<path>` ``, the form the
+Oracle's stale-ref evidence strings are required to take (a repoint target later
+in the same bullet does not match). Suppression is per ref, not per artifact: a
+declined fix for one reference must not blind the audit to new stale references
+in the same file.
+
+### Ordering with `analyst cluster`
+
+`analyst cluster` (run by `mine`) rewrites `clusters.json` from its own clusters
+and prunes every per-cluster file it did not write, including `stale-ref` ones.
+Run order is **mine → freshness → propose**, and freshness must be re-run after
+any later mine.
 
 ## Eval
 

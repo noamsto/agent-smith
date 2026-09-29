@@ -4,6 +4,7 @@ incidents.db.last-run
 *.duckdb
 clusters.json
 clusters/
+freshness.json
 proposals.json
 apply-plan.json
 editor-result.json
