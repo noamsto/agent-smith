@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"syscall"
@@ -227,16 +228,12 @@ func (s *scanner) live(c Candidate, a artifact, bases []string) bool {
 			}
 		}
 	}
-	for _, b := range probe {
-		if exists(b) {
-			return true
-		}
+	if slices.ContainsFunc(probe, exists) {
+		return true
 	}
 	for _, b := range probe {
-		for _, t := range symbolTrims(b) {
-			if exists(t) {
-				return true
-			}
+		if slices.ContainsFunc(symbolTrims(b), exists) {
+			return true
 		}
 	}
 
@@ -248,12 +245,7 @@ func (s *scanner) live(c Candidate, a artifact, bases []string) bool {
 		tok = tok[2:]
 	}
 	idx := s.repoIndex(a.Root)
-	for _, t := range append([]string{tok}, symbolTrims(tok)...) {
-		if idx.hasSuffix(t) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(append([]string{tok}, symbolTrims(tok)...), idx.hasSuffix)
 }
 
 // downgrade reports whether a missing Confident ref must be demoted to

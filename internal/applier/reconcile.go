@@ -32,11 +32,11 @@ func ghState(state string) string {
 // prURLRe-free extraction: the PR line the applier wrote is "**PR:** <url>".
 func entryPRURL(content string) string {
 	const marker = "**PR:** "
-	i := strings.Index(content, marker)
-	if i < 0 {
+	_, after, ok := strings.Cut(content, marker)
+	if !ok {
 		return ""
 	}
-	rest := content[i+len(marker):]
+	rest := after
 	if j := strings.IndexByte(rest, '\n'); j >= 0 {
 		rest = rest[:j]
 	}

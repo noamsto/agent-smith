@@ -99,8 +99,8 @@ func skipBacktickOnly(path string) bool {
 func hasPlaceholderSegment(path string) bool {
 	for _, seg := range strings.Split(path, "/") {
 		stem := seg
-		if i := strings.Index(seg, "."); i >= 0 {
-			stem = seg[:i]
+		if before, _, ok := strings.Cut(seg, "."); ok {
+			stem = before
 		}
 		if placeholderStems[strings.ToLower(stem)] {
 			return true
