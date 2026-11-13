@@ -27,6 +27,8 @@ jobs:
             experimental-features = nix-command flakes
       - run: nix flake check
 
+  # build and build-darwin push the package the Home Manager module installs
+  # to dispatcher.cachix.org so downstream rebuilds substitute it.
   build:
     runs-on: ubuntu-latest
     steps:
@@ -35,4 +37,22 @@ jobs:
         with:
           extra_nix_config: |
             experimental-features = nix-command flakes
+      - uses: cachix/cachix-action@v17
+        with:
+          name: dispatcher
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - run: nix build .
+
+  build-darwin:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+      - uses: cachix/cachix-action@v17
+        with:
+          name: dispatcher
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - run: nix build .
